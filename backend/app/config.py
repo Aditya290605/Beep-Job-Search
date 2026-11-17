@@ -65,3 +65,18 @@ CANONICAL_CITIES = [
     "Coimbatore",
     "Remote"
 ]
+
+# --- LLM & Vertex AI Settings ---
+VERTEX_AI_MODEL = os.environ.get("VERTEX_AI_MODEL", "gemini-2.0-flash-lite-preview-02-05")
+VERTEX_AI_FALLBACK_MODEL = os.environ.get("VERTEX_AI_FALLBACK_MODEL", "gemini-1.5-flash")
+
+# Model pricing in USD per 1M tokens
+PRICING_PER_MILLION = {
+    "gemini-2.0-flash-lite-preview-02-05": {"input": 0.10, "output": 0.40},
+    "gemini-2.5-flash-lite": {"input": 0.10, "output": 0.40},
+    "gemini-1.5-flash-8b": {"input": 0.075, "output": 0.30},
+    "gemini-1.5-flash": {"input": 0.15, "output": 0.60},
+    "gemini-2.0-flash": {"input": 0.15, "output": 0.60},
+    "default": {"input": 0.10, "output": 0.40}
+}
+

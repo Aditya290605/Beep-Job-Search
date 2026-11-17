@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from app import config
 from app.models import RawJob, PipelineRunStats
 from app.db import Database
+from app.tagger import enrich_untagged_jobs
 
 # Import adapters
 from app.adapters.greenhouse import fetch_greenhouse_jobs
@@ -86,6 +87,15 @@ def run_pipeline(db: Database = None) -> PipelineRunStats:
         stats.duplicates_skipped = dupes
         stats.status = "success" if stats.failed_count == 0 else "partial_failure"
         logger.info(f"Insertion complete: {inserted} new posts added, {dupes} duplicates linked")
+
+        # LLM Tagging & Taxonomy Enrichment for untagged unique jobs
+        try:
+            logger.info("Starting LLM tagging and taxonomy enrichment...")
+            tagged_count = enrich_untagged_jobs(db, run_id=run_id)
+            stats.tagged_count = tagged_count
+            logger.info(f"Enriched {tagged_count} jobs with LLM role tags, skills, and confidence.")
+        except Exception as e:
+            logger.error(f"Enrichment error: {e}", exc_info=True)
     except Exception as e:
         logger.error(f"Database insertion failed: {e}", exc_info=True)
         stats.status = "failed"

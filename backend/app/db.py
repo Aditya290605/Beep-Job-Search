@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime, timezone
 from app import config
 from app.models import RawJob, PipelineRunStats
+from app.dedupe import DeduplicationIndex
 
 logger = logging.getLogger(__name__)
 
@@ -98,13 +99,40 @@ class Database:
             if not self._sqlite_mem_conn:
                 conn.close()
 
-    def insert_jobs(self, jobs: List[RawJob]) -> Tuple[int, int]:
+    def load_dedupe_index(self) -> DeduplicationIndex:
+        """Loads active jobs into the in-memory DeduplicationIndex for fast near-duplicate matching."""
+        index = DeduplicationIndex()
+        conn = self.get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id, company, title, city, job_type, apply_url FROM jobs WHERE is_active = 1" if self.is_sqlite else "SELECT id, company, title, city, job_type, apply_url FROM jobs WHERE is_active = TRUE")
+            rows = cur.fetchall()
+            for row in rows:
+                if self.is_sqlite:
+                    index.index_job(
+                        job_id=row["id"], company=row["company"], title=row["title"],
+                        city=row["city"], job_type=row["job_type"], apply_url=row["apply_url"]
+                    )
+                else:
+                    index.index_job(
+                        job_id=row[0], company=row[1], title=row[2],
+                        city=row[3], job_type=row[4], apply_url=row[5]
+                    )
+            return index
+        finally:
+            if not self._sqlite_mem_conn:
+                conn.close()
+
+    def insert_jobs(self, jobs: List[RawJob], dedupe_index: Optional[DeduplicationIndex] = None) -> Tuple[int, int]:
         """
-        Inserts a batch of jobs idempotently.
+        Inserts a batch of jobs idempotently with exact + fuzzy deduplication.
         Returns: (inserted_count, duplicates_skipped)
         """
         if not jobs:
             return 0, 0
+
+        if dedupe_index is None:
+            dedupe_index = self.load_dedupe_index()
 
         conn = self.get_connection()
         inserted_count = 0
@@ -115,7 +143,7 @@ class Database:
             for job in jobs:
                 norm_key = job.normalized_key
 
-                # 1. Check if job already exists by normalized_key
+                # 1. Level 1: Exact match on normalized_key
                 if self.is_sqlite:
                     cur.execute("SELECT id FROM jobs WHERE normalized_key = ?", (norm_key,))
                     existing = cur.fetchone()
@@ -123,17 +151,25 @@ class Database:
                     cur.execute("SELECT id FROM jobs WHERE normalized_key = %s", (norm_key,))
                     existing = cur.fetchone()
 
+                existing_job_id = None
                 if existing:
+                    existing_job_id = existing[0] if isinstance(existing, tuple) else existing["id"]
+                else:
+                    # 2. Level 2: Fuzzy near-duplicate match (rapidfuzz / difflib)
+                    fuzzy_match_id = dedupe_index.find_duplicate(job)
+                    if fuzzy_match_id:
+                        existing_job_id = fuzzy_match_id
+
+                if existing_job_id:
                     duplicates_skipped += 1
-                    job_id = existing[0] if isinstance(existing, tuple) else existing["id"]
-                    # Add to job_sources table if this source isn't linked yet
+                    # Link duplicate source URL to canonical job
                     if self.is_sqlite:
                         cur.execute(
                             """
                             INSERT OR IGNORE INTO job_sources (job_id, source_name, source_job_id, url)
                             VALUES (?, ?, ?, ?)
                             """,
-                            (job_id, job.source_name, job.source_job_id, job.apply_url)
+                            (existing_job_id, job.source_name, job.source_job_id, job.apply_url)
                         )
                     else:
                         cur.execute(
@@ -142,10 +178,10 @@ class Database:
                             VALUES (%s, %s, %s, %s)
                             ON CONFLICT (job_id, source_name, url) DO NOTHING
                             """,
-                            (job_id, job.source_name, job.source_job_id, job.apply_url)
+                            (existing_job_id, job.source_name, job.source_job_id, job.apply_url)
                         )
                 else:
-                    # 2. Insert new canonical job
+                    # 3. Insert new canonical job
                     now_str = datetime.now(timezone.utc).isoformat()
                     if self.is_sqlite:
                         cur.execute(
@@ -195,6 +231,12 @@ class Database:
                             """,
                             (job_id, job.source_name, job.source_job_id, job.apply_url)
                         )
+
+                    # Add new job to dedupe index so subsequent jobs in the same batch can match against it
+                    dedupe_index.index_job(
+                        job_id=job_id, company=job.company, title=job.title,
+                        city=job.city, job_type=job.job_type, apply_url=job.apply_url
+                    )
                     inserted_count += 1
 
             conn.commit()
