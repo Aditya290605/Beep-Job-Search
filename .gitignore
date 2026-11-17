@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Environment & Secrets (NEVER commit secrets)
+.env
+*.env
+!.env.example
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Node / Frontend
+node_modules/
+dist/
+build/
+.npm/
+
+# IDE & OS
+.DS_Store
+.idea/
+.vscode/
