@@ -2,10 +2,16 @@
 tests/test_adapters.py - Unit tests for normalization, adapters, and database deduplication
 """
 
+import sys
+import os
 import unittest
-from adapters.base import is_india_location, is_fresher_job, clean_html, extract_job_type
-from models import RawJob, generate_normalized_key, PipelineRunStats
-from db import Database
+
+# Ensure backend root is on sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from app.adapters.base import is_india_location, is_fresher_job, clean_html, extract_job_type
+from app.models import RawJob, generate_normalized_key, PipelineRunStats
+from app.db import Database
 
 
 class TestAdapterUtilities(unittest.TestCase):
@@ -69,7 +75,8 @@ class TestDatabaseOperations(unittest.TestCase):
     def setUp(self):
         # In-memory SQLite for test isolation
         self.db = Database("sqlite:///:memory:")
-        self.db.init_db("schema.sql")
+        schema_path = os.path.join(os.path.dirname(__file__), "..", "app", "schema.sql")
+        self.db.init_db(schema_path)
 
     def test_idempotent_insertion_and_deduplication(self):
         job1 = RawJob(

@@ -10,8 +10,8 @@ import json
 import logging
 from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime, timezone
-import config
-from models import RawJob, PipelineRunStats
+from app import config
+from app.models import RawJob, PipelineRunStats
 
 logger = logging.getLogger(__name__)
 

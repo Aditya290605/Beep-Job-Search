@@ -8,8 +8,8 @@ No authentication required.
 
 import logging
 from typing import List
-from models import RawJob
-from adapters.base import fetch_json, is_india_location, is_fresher_job, extract_job_type
+from app.models import RawJob
+from app.adapters.base import fetch_json, is_india_location, is_fresher_job, extract_job_type
 
 logger = logging.getLogger(__name__)
 

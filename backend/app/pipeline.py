@@ -7,21 +7,25 @@ Can be executed as a Cloud Run Job or standalone script.
 """
 
 import sys
+import os
 import logging
 from datetime import datetime, timezone
 from typing import List, Dict
 
-import config
-from models import RawJob, PipelineRunStats
-from db import Database
+# Ensure backend root is on sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from app import config
+from app.models import RawJob, PipelineRunStats
+from app.db import Database
 
 # Import adapters
-from adapters.greenhouse import fetch_greenhouse_jobs
-from adapters.lever import fetch_lever_jobs
-from adapters.ashby import fetch_ashby_jobs
-from adapters.smartrecruiters import fetch_smartrecruiters_jobs
-from adapters.jobicy import fetch_jobicy_jobs
-from adapters.remotive import fetch_remotive_jobs
+from app.adapters.greenhouse import fetch_greenhouse_jobs
+from app.adapters.lever import fetch_lever_jobs
+from app.adapters.ashby import fetch_ashby_jobs
+from app.adapters.smartrecruiters import fetch_smartrecruiters_jobs
+from app.adapters.jobicy import fetch_jobicy_jobs
+from app.adapters.remotive import fetch_remotive_jobs
 
 logging.basicConfig(
     level=logging.INFO,
