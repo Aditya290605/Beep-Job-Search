@@ -24,3 +24,21 @@
   3. **Zero Secrets for Ingestion:** The ingestion pipeline now needs zero API keys or signups to collect jobs.
 
 ---
+
+### Entry 3: Schema DDL Incompatibilities in Offline SQLite Test Runner
+- **Phase:** Phase 2 (Database Layer & Unit Tests)
+- **Symptom:** Running offline unit tests against `schema.sql` failed with `sqlite3.OperationalError: near "(": syntax error` and `sqlite3.OperationalError: no such table: jobs`.
+- **Root Cause:** 
+  1. `schema.sql` utilizes Postgres-specific constructs (`DEFAULT NOW()` instead of SQLite's `DEFAULT CURRENT_TIMESTAMP`, and Postgres multi-line GIN index syntax `USING gin(to_tsvector(...))`).
+  2. Standard SQLite in-memory `:memory:` connections are ephemeral and destroy their tables when closed between query helper calls.
+- **Fix:** Updated `db.py`'s SQLite translation layer to dynamically replace `NOW()` with `CURRENT_TIMESTAMP`, strip Postgres GIN index statements cleanly on SQLite, and maintain a persistent connection handle for in-memory test databases. All 8 test suites now run and pass in 0.001s with zero external dependencies.
+
+---
+
+### Entry 4: Location Normalization Precedence Bug
+- **Phase:** Phase 2 (Adapter Utilities)
+- **Symptom:** Location strings like `"Remote (India)"` were classified as `"India (Multiple/Other)"` instead of canonical `"Remote"`.
+- **Root Cause:** In `is_india_location()`, the check for the substring `"india"` ran before evaluating the remote-eligibility condition.
+- **Fix:** Reordered matching logic so that explicit cities match first (e.g., "Pune / Remote" -> "Pune"), followed by Remote-India detection (e.g. "Remote (India)" -> "Remote"), and then broad country fallback.
+
+---
