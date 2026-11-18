@@ -121,37 +121,37 @@ def heuristic_fallback_tagger(jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]
         role = "Other"
         
         # Check specific title keywords first with word boundary matching
-        if re.search(r'\b(marketing|growth|seo|social media)\b', title_lower):
+        if re.search(r'\b(marketing|growth|seo|social media|brand|content|communications)\b', title_lower):
             role = "Marketing"
-        elif re.search(r'\b(data|machine learning|ml|ai|analyst|analytics|bi)\b', title_lower):
+        elif re.search(r'\b(data|machine learning|ml|ai|analyst|analytics|bi|research|scientist|quant|insights)\b', title_lower):
             role = "Data/ML"
-        elif re.search(r'\b(design\w*|ui|ux|graphic)\b', title_lower):
+        elif re.search(r'\b(design\w*|ui|ux|graphic|creative|visual)\b', title_lower):
             role = "Design"
-        elif re.search(r'\b(sales|bdr|sdr|business development)\b', title_lower):
+        elif re.search(r'\b(sales|bdr|sdr|business development|account|commercial|bd)\b', title_lower):
             role = "Sales"
-        elif re.search(r'\b(hr|recruiting|talent|people ops)\b', title_lower):
+        elif re.search(r'\b(hr|recruiting|talent|people ops|onboarding)\b', title_lower):
             role = "HR"
-        elif re.search(r'\b(finance|accounting|tax|audit)\b', title_lower):
+        elif re.search(r'\b(finance|accounting|tax|audit|treasury|credit|investment|lending)\b', title_lower):
             role = "Finance"
-        elif re.search(r'\b(operations|ops|logistics|supply chain)\b', title_lower):
+        elif re.search(r'\b(operations|ops|logistics|supply chain|process|support|customer|program|project|implementation|warehouse|product)\b', title_lower):
             role = "Ops"
-        elif re.search(r'\b(software|sde|developer|backend|frontend|fullstack|devops|cloud|qa|engineer)\b', title_lower):
+        elif re.search(r'\b(software|sde|swe|developer|backend|frontend|fullstack|devops|cloud|qa|sdet|engineer|technical|it|systems|security|network|silicon|hardware|embedded|quality|test)\b', title_lower):
             role = "SDE"
         else:
             # Fallback to broader text matching with word boundaries
             if re.search(r'\b(marketing|growth|seo)\b', text):
                 role = "Marketing"
-            elif re.search(r'\b(software|sde|developer|backend|frontend|fullstack|devops|cloud|qa)\b', text):
+            elif re.search(r'\b(software|sde|developer|backend|frontend|fullstack|devops|cloud|qa|engineer|technical)\b', text):
                 role = "SDE"
-            elif re.search(r'\b(data|machine learning|\bml\b|\bai\b)\b', text):
+            elif re.search(r'\b(data|machine learning|\bml\b|\bai\b|analytics)\b', text):
                 role = "Data/ML"
             elif re.search(r'\b(design|ui|ux)\b', text):
                 role = "Design"
             elif re.search(r'\b(sales|bdr|sdr)\b', text):
                 role = "Sales"
-            elif re.search(r'\b(operations|logistics)\b', text):
+            elif re.search(r'\b(operations|logistics|support|process)\b', text):
                 role = "Ops"
-            elif re.search(r'\b(finance|accounting)\b', text):
+            elif re.search(r'\b(finance|accounting|audit)\b', text):
                 role = "Finance"
             elif re.search(r'\b(hr|recruiting|talent)\b', text):
                 role = "HR"
@@ -161,12 +161,38 @@ def heuristic_fallback_tagger(jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]
 
         # 3. Skills extraction
         detected_skills = []
-        skill_candidates = ["python", "java", "react", "sql", "javascript", "node", "c++", "aws", "docker", "excel", "figma"]
-        for s in skill_candidates:
-            if re.search(r'\b' + re.escape(s) + r'\b', text):
-                detected_skills.append(s.capitalize())
-        if not detected_skills:
-            detected_skills = ["Problem Solving"]
+        skill_candidates = [
+            ("python", "Python"), ("java", "Java"), ("react", "React"), ("sql", "SQL"),
+            ("javascript", "JavaScript"), ("typescript", "TypeScript"), ("node", "Node.js"),
+            ("c++", "C++"), ("golang", "Go"), ("aws", "AWS"), ("docker", "Docker"),
+            ("kubernetes", "Kubernetes"), ("linux", "Linux"), ("git", "Git"),
+            ("excel", "Excel"), ("figma", "Figma"), ("tableau", "Tableau"),
+            ("power bi", "Power BI"), ("machine learning", "Machine Learning"),
+            ("deep learning", "Deep Learning"), ("pytorch", "PyTorch"),
+            ("tensorflow", "TensorFlow"), ("html", "HTML/CSS"), ("mongodb", "MongoDB"),
+            ("postgresql", "PostgreSQL"), ("testing", "Automation Testing"),
+            ("selenium", "Selenium"), ("android", "Android"), ("ios", "iOS")
+        ]
+        for pattern, label in skill_candidates:
+            if re.search(r'\b' + re.escape(pattern) + r'\b', text) and label not in detected_skills:
+                detected_skills.append(label)
+
+        role_default_skills = {
+            "SDE": ["Data Structures", "Algorithms", "Python", "Git"],
+            "Data/ML": ["Python", "SQL", "Data Analysis", "Statistics"],
+            "Design": ["Figma", "UI/UX Design", "Wireframing", "Prototyping"],
+            "Marketing": ["Digital Marketing", "Content Strategy", "Growth Analytics"],
+            "Sales": ["Business Development", "Client Communication", "CRM"],
+            "Ops": ["Process Operations", "Cross-functional Coordination", "Excel"],
+            "Finance": ["Financial Analysis", "Excel", "Accounting & Audit"],
+            "HR": ["Talent Acquisition", "Candidate Screening", "HR Operations"],
+            "Other": ["Analytical Thinking", "Problem Solving", "Communication"]
+        }
+        for fallback_skill in role_default_skills.get(role, role_default_skills["Other"]):
+            if len(detected_skills) >= 4:
+                break
+            if fallback_skill not in detected_skills:
+                detected_skills.append(fallback_skill)
 
         tagged.append({
             "id": j["id"],

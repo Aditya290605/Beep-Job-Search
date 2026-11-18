@@ -62,7 +62,7 @@ class TestLLMTagger(unittest.TestCase):
         self.assertEqual(results[0]["role"], "SDE")
         self.assertIn("Python", results[0]["skills"])
         self.assertEqual(results[1]["role"], "Data/ML")
-        self.assertIn("Sql", results[1]["skills"])
+        self.assertIn("SQL", results[1]["skills"])
         self.assertEqual(results[2]["role"], "Design")
         self.assertIn("Figma", results[2]["skills"])
         self.assertEqual(results[3]["role"], "Marketing")
@@ -123,7 +123,7 @@ class TestDatabaseEnrichmentAndCostLogging(unittest.TestCase):
         # Postman job
         self.assertEqual(rows[1]["role_tag"], "Data/ML")
         skills_2 = json.loads(rows[1]["skills"])
-        self.assertIn("Sql", skills_2)
+        self.assertIn("SQL", skills_2)
 
         # 4. Verify cost was logged in llm_cost_logs
         cur.execute("SELECT model_name, posts_count, input_tokens, output_tokens, cost_usd FROM llm_cost_logs WHERE run_id = ?", (run_id,))

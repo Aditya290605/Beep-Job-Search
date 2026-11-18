@@ -63,8 +63,13 @@ GITHUB_FEEDS = [
 
 def clean_markdown_cell(cell: str) -> str:
     """Removes markdown bold, italics, HTML tags, and markdown link anchors to yield clean text."""
+    # Drop <sub> captions (e.g. "Fintech", degree notes) so they don't leak into names/titles
+    text = re.sub(r'<sub>.*?</sub>', ' ', cell, flags=re.S)
     # Remove HTML tags
-    text = re.sub(r'<[^>]+>', ' ', cell)
+    text = re.sub(r'<[^>]+>', ' ', text)
+    # Remove emoji / pictographs and escaped markdown underscores
+    text = re.sub(r'[\U0001F000-\U0001FAFF\u2600-\u27BF]', '', text)
+    text = text.replace('\\_', ' ')
     # Extract anchor text from markdown links: [Text](url) -> Text
     text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
     # Strip markdown bold/italics
@@ -108,12 +113,15 @@ def fetch_single_feed(feed: dict) -> List[RawJob]:
         if feed.get("format") == "json":
             data = json.loads(content)
             for item in data:
-                title = clean_html(item.get("title", "")).strip()
-                company = clean_html(item.get("company", "")).strip()
+                # Tracker keeps closed listings for history; only open ones are real openings
+                if item.get("status") != "open":
+                    continue
+                title = clean_markdown_cell(item.get("title", ""))
+                company = clean_markdown_cell(item.get("company", ""))
                 apply_url = (item.get("url") or "").strip()
                 locs = item.get("locations") or []
                 location_raw = ", ".join(locs) if locs else "India"
-                posted_date = item.get("date_posted") or item.get("first_seen")
+                posted_date = item.get("last_seen") or item.get("date_posted") or item.get("first_seen")
 
                 if not apply_url or not apply_url.startswith("http"):
                     continue

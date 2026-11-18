@@ -15,29 +15,35 @@ from app.adapters.base import fetch_json, clean_html, is_india_location, is_fres
 logger = logging.getLogger(__name__)
 
 ASHBY_COMPANIES = [
+    ("sarvam", "Sarvam AI"),
+    ("atlan", "Atlan"),
+    ("plane", "Plane"),
+    ("signoz", "SigNoz"),
+    ("tekion", "Tekion"),
+    ("snowflake", "Snowflake"),
+    ("kong", "Kong"),
+    ("anyscale", "Anyscale"),
+    ("notion", "Notion"),
+    ("temporal", "Temporal"),
+    ("amplitude", "Amplitude"),
     ("sentry", "Sentry"),
     ("replit", "Replit"),
     ("linear", "Linear"),
     ("posthog", "PostHog"),
     ("vapi", "Vapi"),
     ("ramp", "Ramp"),
-    ("retool", "Retool"),
-    ("anysphere", "Cursor / Anysphere"),
     ("modal", "Modal Labs"),
     ("perplexity", "Perplexity AI"),
     ("elevenlabs", "ElevenLabs"),
-    ("together-ai", "Together AI"),
     ("dust", "Dust"),
     ("baseten", "Baseten"),
     ("resend", "Resend"),
     ("synthesia", "Synthesia"),
     ("langchain", "LangChain"),
     ("cohere", "Cohere"),
-    ("dbt-labs", "dbt Labs"),
     ("clerk", "Clerk"),
     ("railway", "Railway"),
-    ("render", "Render"),
-    ("sourcegraph", "Sourcegraph")
+    ("render", "Render")
 ]
 
 

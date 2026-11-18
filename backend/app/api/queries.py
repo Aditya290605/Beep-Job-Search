@@ -21,6 +21,7 @@ def search_jobs(
     city: Optional[str] = None,
     role: Optional[str] = None,
     job_type: Optional[str] = None,
+    workplace: Optional[str] = None,
     source: Optional[str] = None,
     posted_within: Optional[str] = None,
     min_exp: Optional[int] = None,
@@ -72,6 +73,16 @@ def search_jobs(
         conditions.append("job_type = ?" if db.is_sqlite else "job_type = %s")
         params.append(job_type.strip().lower())
 
+    # 4b. Workplace type filter ('remote' or 'onsite')
+    if workplace and workplace.strip():
+        wp = workplace.strip().lower()
+        if wp == "remote":
+            conditions.append("city = ?" if db.is_sqlite else "city = %s")
+            params.append("Remote")
+        elif wp == "onsite":
+            conditions.append("city != ?" if db.is_sqlite else "city != %s")
+            params.append("Remote")
+
     # 5. Source filter
     if source and source.strip():
         conditions.append("source_name = ?" if db.is_sqlite else "source_name = %s")
@@ -96,13 +107,13 @@ def search_jobs(
             conditions.append("posted_date >= %s")
             params.append(cutoff)
 
-    # By default, exclude stale posts older than 60 days
+    # By default, exclude stale posts not seen in the last 60 days
     stale_cutoff = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
     if db.is_sqlite:
-        conditions.append("(posted_date IS NULL OR posted_date >= ?)")
+        conditions.append("(last_seen_at IS NULL OR last_seen_at >= ?)")
         params.append(stale_cutoff)
     else:
-        conditions.append("(posted_date IS NULL OR posted_date >= %s)")
+        conditions.append("(last_seen_at IS NULL OR last_seen_at >= %s)")
         params.append(stale_cutoff)
 
     where_clause = " WHERE " + " AND ".join(conditions)

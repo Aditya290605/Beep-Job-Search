@@ -10,13 +10,18 @@ import logging
 from typing import List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.models import RawJob
-from app.adapters.base import fetch_json, is_india_location, is_fresher_job, extract_job_type
+from app.adapters.base import fetch_json, is_india_location, is_fresher_job, extract_job_type, SENIOR_REGEX
 
 logger = logging.getLogger(__name__)
 
 SMARTRECRUITERS_COMPANIES = [
+    ("swiggy", "Swiggy"),
+    ("PHONEPELIMITED", "PhonePe"),
+    ("freshworks", "Freshworks"),
+    ("ixigo", "ixigo"),
+    ("ServiceNow", "ServiceNow"),
+    ("BoschGroup", "Bosch"),
     ("publicisgroupe", "Publicis Sapient"),
-    ("bosch", "Bosch"),
     ("ubisoft", "Ubisoft"),
     ("visa", "Visa"),
     ("Informatica", "Informatica"),
@@ -52,7 +57,7 @@ def fetch_single_smartrecruiters_company(company_id: str, display_name: str) -> 
                 continue
 
             exp_level = (item.get("experienceLevel") or {}).get("id", "").lower()
-            is_entry = exp_level in ("entry_level", "internship", "student")
+            is_entry = exp_level in ("entry_level", "internship", "student", "associate") and not SENIOR_REGEX.search(title)
 
             if not (is_entry or is_fresher_job(title)):
                 continue

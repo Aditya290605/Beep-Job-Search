@@ -51,6 +51,12 @@ def startup_event():
     schema_path = os.path.join(os.path.dirname(__file__), "..", "schema.sql")
     try:
         db.init_db(schema_path)
+        if os.getenv("AUTO_SEED_ON_BOOT", "false").lower() == "true":
+            status = get_status_summary(db)
+            if status.get("total_active_jobs", 0) == 0:
+                import threading
+                from app.pipeline import run_pipeline
+                threading.Thread(target=run_pipeline, args=(db,), daemon=True).start()
     except Exception as e:
         print(f"Warning on db.init_db: {e}")
 
@@ -92,6 +98,23 @@ def get_cost():
     return get_cost_metrics(db)
 
 
+@app.post("/api/refresh")
+def trigger_refresh():
+    """Triggers an on-demand or Cloud Scheduler pipeline run and returns run telemetry."""
+    if not db:
+        raise HTTPException(status_code=500, detail="Database uninitialized")
+    from app.pipeline import run_pipeline
+    stats = run_pipeline(db)
+    return {
+        "status": stats.status,
+        "total_fetched": stats.total_fetched,
+        "new_posts": stats.new_posts,
+        "duplicates_skipped": stats.duplicates_skipped,
+        "tagged_count": stats.tagged_count,
+        "sources_summary": stats.sources_summary
+    }
+
+
 # --- Job Search & Filter Endpoints ---
 
 @app.get("/api/jobs")
@@ -100,6 +123,7 @@ def get_jobs(
     city: Optional[str] = Query(None, description="Filter by canonical city (e.g. Bangalore, Pune, Remote)"),
     role: Optional[str] = Query(None, description="Filter by role taxonomy (SDE, Data/ML, Design, etc.)"),
     job_type: Optional[str] = Query(None, description="'job' or 'internship'"),
+    workplace: Optional[str] = Query(None, description="'onsite' or 'remote'"),
     source: Optional[str] = Query(None, description="Source name (greenhouse, lever, ashby, jobicy, remotive)"),
     posted_within: Optional[str] = Query(None, description="Filter by time posted ('24h', '7d', '30d')"),
     min_exp: Optional[int] = Query(None, description="Minimum experience required"),
@@ -121,6 +145,7 @@ def get_jobs(
         city=city,
         role=role,
         job_type=job_type,
+        workplace=workplace,
         source=source,
         posted_within=posted_within,
         min_exp=min_exp,
@@ -141,7 +166,7 @@ def get_filters():
 
 # --- Static Frontend Hosting (Single Container) ---
 
-frontend_dist = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../frontend/dist"))
+frontend_dist = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../frontend"))
 
 if os.path.exists(frontend_dist):
     # Mount static assets directory
@@ -149,11 +174,11 @@ if os.path.exists(frontend_dist):
     if os.path.exists(assets_dir):
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
-    # Catch-all route to serve React SPA (HTML5 client-side routing)
+    # Catch-all: serve real files, otherwise index.html (client-side state lives in the query string)
     @app.get("/{full_path:path}")
     def serve_frontend(full_path: str):
-        file_path = os.path.join(frontend_dist, full_path)
-        if os.path.isfile(file_path):
+        file_path = os.path.realpath(os.path.join(frontend_dist, full_path))
+        if file_path.startswith(frontend_dist + os.sep) and os.path.isfile(file_path):
             return FileResponse(file_path)
         index_file = os.path.join(frontend_dist, "index.html")
         if os.path.exists(index_file):
