@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Beep Job Hub — Fresher Jobs &amp; Internships in India</title>
+  <meta name="description" content="Verified fresher jobs and internships across India (0–1 years experience), aggregated from official company career portals every 2 hours.">
+  <link rel="icon" href="/assets/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Paytone+One&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Rubik:wght@800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <!-- Intro Screen: Pure black screen, Beep letters glide in from right to left, collide with chain-reaction physics, and split open from center -->
+  <div id="intro" class="intro" role="dialog" aria-modal="true" aria-label="Welcome to Beep Job Hub">
+    <div class="intro-half intro-top"></div>
+    <div class="intro-half intro-bottom"></div>
+    <div class="intro-seam" aria-hidden="true"></div>
+    <div class="intro-stage">
+      <div class="wordmark-stage">
+        <h1 class="wordmark" aria-label="Beep">
+          <span class="wm-slot"><span class="wm-char wm-b" data-idx="0">B</span></span>
+          <span class="wm-slot"><span class="wm-char wm-e1" data-idx="1">e</span></span>
+          <span class="wm-slot"><span class="wm-char wm-e2" data-idx="2">e</span></span>
+          <span class="wm-slot"><span class="wm-char wm-p" data-idx="3">p</span></span>
+        </h1>
+      </div>
+      <div class="intro-footer">
+        <p class="intro-tagline">Helping aspirants grow in their career by connecting them with opportunities.</p>
+        <button id="intro-continue" class="intro-btn" type="button">
+          <span>Continue</span>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="app" class="app">
+    <!-- Top Floating Navbar (EventBeep inspired alignment) -->
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="/" id="brand-home" aria-label="Beep Job Hub">
+          <img src="/assets/logo.png" alt="Beep" class="brand-logo" width="38" height="38">
+          <span class="brand-title">Job Hub</span>
+        </a>
+
+        <nav class="nav" aria-label="Primary Navigation">
+          <button type="button" class="nav-link is-active" data-nav="all">All Roles</button>
+          <button type="button" class="nav-link" data-nav="job">Full Time</button>
+          <button type="button" class="nav-link" data-nav="internship">Internships</button>
+          <button type="button" class="nav-link" data-nav="saved">
+            <span>Saved</span>
+            <span class="nav-badge" id="saved-count" hidden>0</span>
+          </button>
+          <button type="button" class="nav-link" data-nav="status">Pipeline Status</button>
+        </nav>
+
+        <div class="topbar-right">
+          <div class="live-pill" id="freshness" title="Refreshed automatically every 2 hours from official career portals">
+            <span class="live-dot" aria-hidden="true"></span>
+            <span id="freshness-text">Live Sync</span>
+          </div>
+          <button type="button" class="ghost-btn" id="replay-intro" title="Replay intro animation">
+            Intro
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Job Hub View -->
+    <main class="page" id="jobs-view">
+      <!-- Search & Filter Bar (Single clean row matching Image 2 alignment) -->
+      <section class="filter-bar" aria-label="Search and filter jobs">
+        <form class="search-box" id="search-form" role="search">
+          <svg class="icon search-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"/>
+            <path d="m20 20-3.5-3.5"/>
+          </svg>
+          <input
+            id="search-input"
+            type="search"
+            placeholder="Title, company, or skill"
+            autocomplete="off"
+            aria-label="Search jobs by title, company, or skill"
+          >
+          <button type="submit" class="search-submit">Search</button>
+        </form>
+
+        <div class="filters-row" id="filters"></div>
+      </section>
+
+      <!-- Active Filter Pills Row -->
+      <div class="active-filters" id="active-filters" hidden></div>
+
+      <!-- Split Master-Detail Board -->
+      <section class="board" id="board" aria-label="Job listings and details">
+        <!-- Left Column: Job Cards List -->
+        <div class="list-col">
+          <div class="list-header">
+            <span class="list-count" id="list-meta">Loading roles...</span>
+            <div class="sort-wrap">
+              <label for="sort-select" class="sr-only">Sort by</label>
+              <select id="sort-select" class="sort-select" aria-label="Sort jobs">
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+              </select>
+            </div>
+          </div>
+
+          <ul class="job-list" id="job-list" aria-label="Fresher job listings"></ul>
+          <nav class="pagination" id="pagination" aria-label="Pagination"></nav>
+        </div>
+
+        <!-- Right Column: Sticky Job Detail View -->
+        <aside class="detail-col" id="detail" aria-live="polite"></aside>
+      </section>
+    </main>
+
+    <!-- Pipeline Status & LLM Cost View (Toggled via Navbar) -->
+    <section class="page status-page" id="status-view" hidden aria-label="Pipeline status and LLM cost metrics">
+      <div class="status-header">
+        <div>
+          <h2 class="status-title">Ingestion Pipeline &amp; Cost Telemetry</h2>
+          <p class="status-sub">Live health, deduplication audit, and Vertex AI Gemini Flash-Lite tagging cost metrics.</p>
+        </div>
+        <button type="button" class="btn-secondary" id="back-to-jobs">Back to Job Hub</button>
+      </div>
+      <div id="status-content" class="status-grid"></div>
+    </section>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        <span>Beep Job Hub — Curated 0–1 Yr Fresher &amp; Intern Roles Across India</span>
+        <span>All listings link directly to official company career portals.</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/assets/mock-data.js"></script>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

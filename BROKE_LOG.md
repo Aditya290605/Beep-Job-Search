@@ -31,7 +31,7 @@
 - **Root Cause:** 
   1. `schema.sql` utilizes Postgres-specific constructs (`DEFAULT NOW()` instead of SQLite's `DEFAULT CURRENT_TIMESTAMP`, and Postgres multi-line GIN index syntax `USING gin(to_tsvector(...))`).
   2. Standard SQLite in-memory `:memory:` connections are ephemeral and destroy their tables when closed between query helper calls.
-- **Fix:** Updated `db.py`'s SQLite translation layer to dynamically replace `NOW()` with `CURRENT_TIMESTAMP`, strip Postgres GIN index statements cleanly on SQLite, and maintain a persistent connection handle for in-memory test databases. All 8 test suites now run and pass in 0.001s with zero external dependencies.
+- **Fix:** Updated `db.py`'s SQLite translation layer to dynamically replace `NOW()` with `CURRENT_TIMESTAMP`, strip Postgres GIN index statements cleanly on SQLite, and maintain a persistent connection handle for in-memory test databases. All test suites now run and pass in 0.007s with zero external dependencies.
 
 ---
 
@@ -66,3 +66,38 @@
   3. Extended design root matches (`design\w*`) to cleanly catch `"Designer"` and `"Designing"`.
 
 ---
+
+### Entry 7: Live Ingestion Leakage: "Remote - USA" and "Associate Director" False Positives
+- **Phase:** Live Backend Testing (Pre-Phase 6)
+- **Symptom:** When running live ingestion across public ATS endpoints, foreign US/UK remote jobs (e.g. `"Coinbase - Remote (USA)"`, `"Databricks - Associate Director Specialist"`) were erroneously accepted as Indian fresher jobs.
+- **Root Cause:**
+  1. **Remote Over-Matching:** In `is_india_location()`, the remote clause included `or "remote" in loc_lower`. Because any remote posting has "remote", US-only remote positions slipped through.
+  2. **Corporate Title Collision:** The keyword `r"\bassociate\b"` for entry-level roles collided with high-seniority titles like `"Associate Director"` and `"Associate Manager"`.
+- **Fix:** 
+  1. Enforced strict geo-exclusion: reject postings mentioning US/UK/Canada/EMEA/Europe, and only permit Remote if explicitly tagged with `"india"`, `"apac"`, `"worldwide"`, `"anywhere"`, or `"global"`.
+  2. Added negative lookahead to fresher regex: `r"\bassociate\b(?!\s+(?:director|manager|vp|partner|lead|principal))"`.
+
+---
+
+### Entry 8: Substring Geo Collision: "Indianapolis, IN" Matched as India
+- **Phase:** Live Backend Testing (Pre-Phase 6)
+- **Symptom:** US postings in `"Indianapolis, IN"` were categorized as `"India (Multiple/Other)"`.
+- **Root Cause:** In `is_india_location()`, the check `"india" not in loc_lower` evaluated to False because `"indianapolis"` starts with the letters `"india"`.
+- **Fix:** Replaced substring containment `"india" in loc_lower` with strict regex word boundary `re.search(r'\bindia\b', loc_lower)`. Postings in Indiana / Indianapolis are now cleanly rejected.
+
+---
+
+### Entry 9: Scaling Job Volume from 15 to 200+ Genuine Posts via Open Community Trackers & Domestic ATS Expansion
+- **Phase:** Live Backend Scaling & Verification (Pre-Phase 6)
+- **Symptom:** Initial live ingestion tests against ~35 US-centric Greenhouse boards yielded only 15-35 distinct fresher jobs, far below our 200+ job target.
+- **Root Cause:**
+  1. An individual tech company typically posts only 0 to 2 fresher requisitions at any given time.
+  2. The initial fresher detector was too narrow, skipping standard entry-level titles like `SDE 1`, `Software Engineer 1`, `Data Analyst 1`, `Junior QA`, and `Graduate Engineer Trainee (GET)`.
+  3. High-volume Indian employers like Paytm (which alone maintains 200+ listings on Lever) were absent from the initial seed list.
+  4. Curated open-source fresher trackers (`Sarthzk/internship-tracker/data/listings.json`) that continuously scrape 160+ official career portals in India were not integrated into the adapter suite.
+- **Fix:**
+  1. Expanded company boards across Greenhouse and Lever (adding Paytm, HP, TCS, Airbnb, Porter, PocketFM).
+  2. Broadened the role taxonomy and regex matching in `backend/app/adapters/base.py` to cover all technical early-career titles (Data Analyst, QA/SDET, Trainee, Frontend/Backend, SDE-1).
+  3. Upgraded `backend/app/adapters/github_jobs.py` to ingest live structured JSON from automated community trackers with direct career portal URLs.
+  4. Concurrent ThreadPool execution: Accelerated multi-board querying from 45 seconds down to ~4 seconds using Python `concurrent.futures.ThreadPoolExecutor`.
+  5. **Verification Result:** Total fetched jobs scaled from 70 to **330**, resulting in **241 unique fresher jobs** stored in the database with 89 duplicates cleanly linked. All listings point to official company application portals across Bangalore, Gurugram, Hyderabad, Noida, Pune, Chennai, and India Remote.

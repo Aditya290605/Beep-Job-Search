@@ -53,10 +53,18 @@ class TestAdapterUtilities(unittest.TestCase):
         self.assertTrue(is_fresher_job("Graduate Trainee Engineer"))
         self.assertTrue(is_fresher_job("Associate Software Engineer", "Requires 0-1 years of experience."))
         self.assertTrue(is_fresher_job("Junior Backend Developer"))
+        self.assertTrue(is_fresher_job("Data Analyst 1"))
+        self.assertTrue(is_fresher_job("Junior QA Engineer"))
+        self.assertTrue(is_fresher_job("Associate Data Analyst"))
+        self.assertTrue(is_fresher_job("SDE-1"))
+        self.assertTrue(is_fresher_job("Graduate Engineer Trainee"))
         
         # Non-fresher jobs
         self.assertFalse(is_fresher_job("Senior Staff Engineer", "10+ years of distributed systems experience."))
         self.assertFalse(is_fresher_job("Lead Architect", "Seeking experienced leader."))
+        self.assertFalse(is_fresher_job("Software Engineer 2"))
+        self.assertFalse(is_fresher_job("SDE II"))
+        self.assertFalse(is_fresher_job("Senior Data Analyst"))
 
     def test_clean_html(self):
         raw = "<p>Join our <strong>engineering</strong> team!&nbsp;Apply today &amp; grow.</p>"
