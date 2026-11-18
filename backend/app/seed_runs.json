@@ -1,0 +1,15 @@
+[
+  {
+    "id": 1,
+    "started_at": "2026-11-18T06:22:05.868068+00:00",
+    "finished_at": "2026-11-18T06:22:43.044110+00:00",
+    "status": "success",
+    "sources_summary": "{\"greenhouse\": 66, \"lever\": 41, \"ashby\": 10, \"smartrecruiters\": 31, \"jobicy\": 2, \"remotive\": 3, \"github_feeds\": 122}",
+    "total_fetched": 275,
+    "new_posts": 207,
+    "duplicates_skipped": 68,
+    "tagged_count": 207,
+    "failed_count": 0,
+    "error_message": null
+  }
+]

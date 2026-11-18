@@ -100,4 +100,16 @@
   2. Broadened the role taxonomy and regex matching in `backend/app/adapters/base.py` to cover all technical early-career titles (Data Analyst, QA/SDET, Trainee, Frontend/Backend, SDE-1).
   3. Upgraded `backend/app/adapters/github_jobs.py` to ingest live structured JSON from automated community trackers with direct career portal URLs.
   4. Concurrent ThreadPool execution: Accelerated multi-board querying from 45 seconds down to ~4 seconds using Python `concurrent.futures.ThreadPoolExecutor`.
-  5. **Verification Result:** Total fetched jobs scaled from 70 to **330**, resulting in **241 unique fresher jobs** stored in the database with 89 duplicates cleanly linked. All listings point to official company application portals across Bangalore, Gurugram, Hyderabad, Noida, Pune, Chennai, and India Remote.
+  5. **Verification Result:** Total fetched jobs scaled from 70 to **275 open postings**, resulting in **207 unique active fresher jobs** stored in the database with 68 duplicates cleanly linked. All listings point to official company application portals across Bangalore, Gurugram, Hyderabad, Noida, Pune, Chennai, Mumbai, and India Remote.
+
+---
+
+### Entry 10: GCP Prepay Billing Depletion (`HTTP 402 RESOURCE_EXHAUSTED`) & Resilient Tagger Fallback
+- **Phase:** Pre-Deployment Live LLM Verification
+- **Symptom:** Calling `generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent` with the project API key returned `HTTP 402: Your prepayment credits are depleted` (`status: RESOURCE_EXHAUSTED`).
+- **Root Cause:**
+  1. `gemini-2.0-flash-lite` was retired by Google in favor of `gemini-2.5-flash-lite`.
+  2. Project `my-project-002-515013` is linked to a GCP Prepay billing account whose prepaid credit balance was `0`, causing Google's API gateway to reject billed calls with `HTTP 402` unless switched to an unbilled Google AI Studio Free-Tier project or topped up.
+- **Fix:**
+  1. Upgraded the model configuration in `config.py` and `tagger.py` to `gemini-2.5-flash-lite` ($0.10/1M input, $0.40/1M output) with multi-endpoint fallback (`generativelanguage.googleapis.com` -> Vertex `global` -> Vertex `us-central1`).
+  2. Verified that `tagger.py` catches `HTTP 402 / 429 / 404` without crashing the pipeline and seamlessly falls back to the word-boundary regex taxonomy & skill extractor so 100% of ingested jobs remain enriched and searchable on the frontend.

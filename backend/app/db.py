@@ -98,6 +98,94 @@ class Database:
         finally:
             if not self._sqlite_mem_conn:
                 conn.close()
+        if os.getenv("AUTO_SEED_ON_BOOT", "false").lower() == "true":
+            try:
+                self.seed_from_defaults()
+            except Exception as e:
+                logger.warning(f"Default seeding skipped or failed: {e}")
+
+    def seed_from_defaults(self):
+        """Seeds jobs, pipeline_runs, and llm_cost_logs from static seed json files if empty."""
+        conn = self.get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT count(*) FROM jobs")
+            cnt = cur.fetchone()[0]
+            if cnt > 0:
+                return
+
+            seed_dir = os.path.dirname(__file__)
+            jobs_path = os.path.join(seed_dir, "seed_jobs.json")
+            if os.path.exists(jobs_path):
+                with open(jobs_path, "r", encoding="utf-8") as f:
+                    jobs = json.load(f)
+                for j in jobs:
+                    cols = [
+                        "normalized_key", "title", "company", "location_raw", "city",
+                        "job_type", "posted_date", "apply_url", "description", "source_name",
+                        "source_job_id", "first_seen_at", "last_seen_at", "is_active",
+                        "role_tag", "is_fresher_friendly", "min_exp", "max_exp", "skills",
+                        "confidence", "tagged_at"
+                    ]
+                    vals = [
+                        j.get("normalized_key"), j.get("title"), j.get("company"),
+                        j.get("location_raw"), j.get("city"), j.get("job_type"),
+                        j.get("posted_date"), j.get("apply_url"), j.get("description"),
+                        j.get("source_name"), j.get("source_job_id"), j.get("first_seen_at"),
+                        j.get("last_seen_at"), j.get("is_active", 1), j.get("role_tag"),
+                        1 if j.get("is_fresher_friendly") else 0, j.get("min_exp", 0),
+                        j.get("max_exp", 1),
+                        json.dumps(j.get("skills", [])) if isinstance(j.get("skills"), list) else j.get("skills"),
+                        j.get("confidence", 0.85), j.get("tagged_at")
+                    ]
+                    if self.is_sqlite:
+                        placeholders = ", ".join(["?"] * len(cols))
+                        col_str = ", ".join(cols)
+                        cur.execute(f"INSERT OR IGNORE INTO jobs ({col_str}) VALUES ({placeholders})", vals)
+                    else:
+                        placeholders = ", ".join(["%s"] * len(cols))
+                        col_str = ", ".join(cols)
+                        cur.execute(f"INSERT INTO jobs ({col_str}) VALUES ({placeholders}) ON CONFLICT (normalized_key) DO NOTHING", vals)
+                conn.commit()
+                logger.info(f"Seeded {len(jobs)} initial jobs from {jobs_path}")
+
+            runs_path = os.path.join(seed_dir, "seed_runs.json")
+            if os.path.exists(runs_path):
+                with open(runs_path, "r", encoding="utf-8") as f:
+                    runs = json.load(f)
+                for r in runs:
+                    finished = r.get("finished_at") or r.get("completed_at")
+                    if self.is_sqlite:
+                        cur.execute(
+                            "INSERT OR IGNORE INTO pipeline_runs (id, status, started_at, finished_at, total_fetched, new_posts, duplicates_skipped, tagged_count, failed_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            (r.get("id"), r.get("status"), r.get("started_at"), finished, r.get("total_fetched"), r.get("new_posts"), r.get("duplicates_skipped"), r.get("tagged_count"), r.get("failed_count"))
+                        )
+                    else:
+                        cur.execute(
+                            "INSERT INTO pipeline_runs (id, status, started_at, finished_at, total_fetched, new_posts, duplicates_skipped, tagged_count, failed_count) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING",
+                            (r.get("id"), r.get("status"), r.get("started_at"), finished, r.get("total_fetched"), r.get("new_posts"), r.get("duplicates_skipped"), r.get("tagged_count"), r.get("failed_count"))
+                        )
+                conn.commit()
+
+            costs_path = os.path.join(seed_dir, "seed_costs.json")
+            if os.path.exists(costs_path):
+                with open(costs_path, "r", encoding="utf-8") as f:
+                    costs = json.load(f)
+                for c in costs:
+                    if self.is_sqlite:
+                        cur.execute(
+                            "INSERT OR IGNORE INTO llm_cost_logs (id, run_id, model_name, posts_count, input_tokens, output_tokens, cost_usd, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                            (c.get("id"), c.get("run_id"), c.get("model_name"), c.get("posts_count"), c.get("input_tokens"), c.get("output_tokens"), c.get("cost_usd"), c.get("created_at"))
+                        )
+                    else:
+                        cur.execute(
+                            "INSERT INTO llm_cost_logs (id, run_id, model_name, posts_count, input_tokens, output_tokens, cost_usd, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING",
+                            (c.get("id"), c.get("run_id"), c.get("model_name"), c.get("posts_count"), c.get("input_tokens"), c.get("output_tokens"), c.get("cost_usd"), c.get("created_at"))
+                        )
+                conn.commit()
+        finally:
+            if not self._sqlite_mem_conn:
+                conn.close()
 
     def load_dedupe_index(self) -> DeduplicationIndex:
         """Loads active jobs into the in-memory DeduplicationIndex for fast near-duplicate matching."""

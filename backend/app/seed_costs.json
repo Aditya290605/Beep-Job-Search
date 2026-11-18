@@ -1,0 +1,72 @@
+[
+  {
+    "id": 288,
+    "run_id": 1,
+    "model_name": "gemini-3.5-flash-lite",
+    "posts_count": 30,
+    "input_tokens": 5244,
+    "output_tokens": 2500,
+    "cost_usd": 0.001524,
+    "created_at": "2026-11-18T11:12:52.199424+00:00"
+  },
+  {
+    "id": 289,
+    "run_id": 1,
+    "model_name": "gemini-3.5-flash-lite",
+    "posts_count": 30,
+    "input_tokens": 5706,
+    "output_tokens": 2392,
+    "cost_usd": 0.001527,
+    "created_at": "2026-11-18T11:12:58.214368+00:00"
+  },
+  {
+    "id": 290,
+    "run_id": 1,
+    "model_name": "gemini-3.5-flash-lite",
+    "posts_count": 30,
+    "input_tokens": 5674,
+    "output_tokens": 2445,
+    "cost_usd": 0.001545,
+    "created_at": "2026-11-18T11:13:04.897422+00:00"
+  },
+  {
+    "id": 291,
+    "run_id": 1,
+    "model_name": "gemini-3.5-flash-lite",
+    "posts_count": 30,
+    "input_tokens": 13967,
+    "output_tokens": 1468,
+    "cost_usd": 0.001984,
+    "created_at": "2026-11-18T11:13:08.851768+00:00"
+  },
+  {
+    "id": 292,
+    "run_id": 1,
+    "model_name": "gemini-3.5-flash-lite",
+    "posts_count": 30,
+    "input_tokens": 5197,
+    "output_tokens": 1455,
+    "cost_usd": 0.001102,
+    "created_at": "2026-11-18T11:13:10.746248+00:00"
+  },
+  {
+    "id": 293,
+    "run_id": 1,
+    "model_name": "gemini-3.5-flash-lite",
+    "posts_count": 30,
+    "input_tokens": 3437,
+    "output_tokens": 2576,
+    "cost_usd": 0.001374,
+    "created_at": "2026-11-18T11:13:16.980203+00:00"
+  },
+  {
+    "id": 294,
+    "run_id": 1,
+    "model_name": "gemini-3.5-flash-lite",
+    "posts_count": 27,
+    "input_tokens": 3157,
+    "output_tokens": 2180,
+    "cost_usd": 0.001188,
+    "created_at": "2026-11-18T11:13:22.612954+00:00"
+  }
+]

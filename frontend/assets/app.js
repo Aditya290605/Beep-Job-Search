@@ -1120,41 +1120,36 @@
     { rot: -10, yEm: 0.14 },
   ];
 
-  // Minimal, refined physical nudge when a letter softly taps its left neighbor
-  function joltLetter(charEl, idx, intensity = 1) {
-    const { rot, yEm } = LETTER_POSE[idx] || { rot: -10, yEm: 0 };
-    const pushLeft = -12 * intensity;
-    const reboundRight = 4 * intensity;
-    const sqX = 1 - 0.045 * intensity;
-    const sqY = 1 + 0.04 * intensity;
+  // Minimal, refined physical nudge when a letter softly taps its left neighbor.
+  // Targets the outer .wm-slot wrapper so it never conflicts with .wm-char's flight transform.
+  function nudgeSlot(slotEl, intensity = 1) {
+    if (!slotEl) return;
+    const pushLeft = -8 * intensity;
+    const reboundRight = 2.5 * intensity;
 
-    const anim = charEl.animate(
+    const anim = slotEl.animate(
       [
         {
-          opacity: 1,
-          transform: `translateX(0px) translateY(${yEm}em) rotate(${rot}deg) scale(1, 1)`,
+          transform: "translateX(0px)",
           offset: 0,
         },
         {
-          opacity: 1,
-          transform: `translateX(${pushLeft}px) translateY(${yEm}em) rotate(${rot - 2.4 * intensity}deg) scale(${sqX}, ${sqY})`,
+          transform: `translateX(${pushLeft}px)`,
           easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-          offset: 0.32,
+          offset: 0.34,
         },
         {
-          opacity: 1,
-          transform: `translateX(${reboundRight}px) translateY(${yEm}em) rotate(${rot + 0.9 * intensity}deg) scale(${1 + 0.015 * intensity}, ${1 - 0.015 * intensity})`,
+          transform: `translateX(${reboundRight}px)`,
           easing: "cubic-bezier(0.25, 1, 0.5, 1)",
-          offset: 0.68,
+          offset: 0.72,
         },
         {
-          opacity: 1,
-          transform: `translateX(0px) translateY(${yEm}em) rotate(${rot}deg) scale(1, 1)`,
+          transform: "translateX(0px)",
           offset: 1,
         },
       ],
       {
-        duration: 460,
+        duration: 520,
         easing: "cubic-bezier(0.22, 1, 0.36, 1)",
         fill: "forwards",
       }
@@ -1162,7 +1157,24 @@
     activeAnims.push(anim);
   }
 
-  function showIntroOverlay() {
+  // Ensures page and custom Rubik 900 font are 100% loaded before intro animation starts
+  async function waitForPageAndFonts() {
+    if (document.readyState !== "complete") {
+      await new Promise((resolve) => {
+        window.addEventListener("load", resolve, { once: true });
+        setTimeout(resolve, 800);
+      });
+    }
+    if (document.fonts && document.fonts.ready) {
+      try {
+        await document.fonts.ready;
+      } catch {
+        /* ignore font load errors */
+      }
+    }
+  }
+
+  async function showIntroOverlay(isReplay = false) {
     if (!el.intro) return;
     clearIntroTimers();
 
@@ -1171,79 +1183,66 @@
     el.intro.setAttribute("aria-hidden", "false");
     document.body.classList.add("intro-lock");
 
+    const slots = $$(".wm-slot", el.intro);
     const chars = $$(".wm-char", el.intro);
     const tagline = $(".intro-tagline", el.intro);
     tagline?.classList.remove("is-visible");
     el.introBtn?.classList.remove("is-visible");
 
-    // Reset all 4 vector letters off-screen to the right
+    // Reset all 4 vector letters off-screen to the right and reset slot nudges
+    slots.forEach((s) => {
+      s.style.transform = "translateX(0px)";
+    });
     chars.forEach((ch, idx) => {
       const { rot, yEm } = LETTER_POSE[idx];
       ch.style.opacity = "0";
-      ch.style.transform = `translateX(62vw) translateY(${yEm}em) rotate(${rot + 6}deg) scale(1, 1)`;
+      ch.style.transform = `translateX(68vw) translateY(${yEm}em) rotate(${rot + 4}deg)`;
     });
 
-    const STAGGER_MS = 540;
-    const FLIGHT_MS = 860;
-    const IMPACT_OFFSET = 0.56;
+    // On initial page entry, wait until window load + fonts ready + deliberate 500ms pause
+    // so 'B' never starts moving before the site has cleanly rendered
+    if (!isReplay) {
+      await waitForPageAndFonts();
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    const STAGGER_MS = 920;
+    const FLIGHT_MS = 1450;
+    const IMPACT_OFFSET = 0.76;
+    const INITIAL_DELAY_MS = 120;
 
     chars.forEach((ch, idx) => {
       const { rot, yEm } = LETTER_POSE[idx];
-      const startDelay = 160 + idx * STAGGER_MS;
+      const startDelay = INITIAL_DELAY_MS + idx * STAGGER_MS;
 
-      const keyframes =
-        idx === 0
-          ? [
-              // 'B' glides in smoothly from the right and settles with a minimal cushion
-              {
-                opacity: 0,
-                transform: `translateX(62vw) translateY(${yEm}em) rotate(${rot + 5}deg) scale(1.02, 0.98)`,
-                easing: "cubic-bezier(0.16, 1, 0.3, 1)",
-                offset: 0,
-              },
-              {
-                opacity: 1,
-                transform: `translateX(-6px) translateY(${yEm}em) rotate(${rot - 1.5}deg) scale(0.97, 1.03)`,
-                easing: "cubic-bezier(0.25, 1, 0.5, 1)",
-                offset: 0.62,
-              },
-              {
-                opacity: 1,
-                transform: `translateX(2px) translateY(${yEm}em) rotate(${rot + 0.5}deg) scale(1.01, 0.99)`,
-                offset: 0.84,
-              },
-              {
-                opacity: 1,
-                transform: `translateX(0px) translateY(${yEm}em) rotate(${rot}deg) scale(1, 1)`,
-                offset: 1,
-              },
-            ]
-          : [
-              // 'e', 'e', 'p' glide in from right, softly tap left neighbor, and settle cleanly
-              {
-                opacity: 0,
-                transform: `translateX(62vw) translateY(${yEm}em) rotate(${rot + 6}deg) scale(1.03, 0.97)`,
-                easing: "cubic-bezier(0.16, 1, 0.3, 1)",
-                offset: 0,
-              },
-              {
-                opacity: 1,
-                transform: `translateX(-6px) translateY(${yEm}em) rotate(${rot - 2.2}deg) scale(0.94, 1.05)`,
-                easing: "cubic-bezier(0.25, 1, 0.5, 1)",
-                offset: IMPACT_OFFSET,
-              },
-              {
-                opacity: 1,
-                transform: `translateX(7px) translateY(${yEm}em) rotate(${rot + 1.2}deg) scale(1.02, 0.98)`,
-                easing: "cubic-bezier(0.25, 1, 0.5, 1)",
-                offset: 0.78,
-              },
-              {
-                opacity: 1,
-                transform: `translateX(0px) translateY(${yEm}em) rotate(${rot}deg) scale(1, 1)`,
-                offset: 1,
-              },
-            ];
+      const keyframes = [
+        {
+          opacity: 0,
+          transform: `translateX(68vw) translateY(${yEm}em) rotate(${rot + 4}deg)`,
+          offset: 0,
+        },
+        {
+          opacity: 1,
+          transform: `translateX(18vw) translateY(${yEm}em) rotate(${rot + 2}deg)`,
+          offset: 0.42,
+        },
+        {
+          opacity: 1,
+          transform: `translateX(-5px) translateY(${yEm}em) rotate(${rot - 1.2}deg)`,
+          easing: "cubic-bezier(0.25, 1, 0.5, 1)",
+          offset: IMPACT_OFFSET,
+        },
+        {
+          opacity: 1,
+          transform: `translateX(1.5px) translateY(${yEm}em) rotate(${rot + 0.4}deg)`,
+          offset: 0.9,
+        },
+        {
+          opacity: 1,
+          transform: `translateX(0px) translateY(${yEm}em) rotate(${rot}deg)`,
+          offset: 1,
+        },
+      ];
 
       const anim = ch.animate(keyframes, {
         duration: FLIGHT_MS,
@@ -1253,16 +1252,16 @@
       });
       activeAnims.push(anim);
 
-      // Subtle, minimal ripple on previously stopped letters to the left
+      // Gentle chain-reaction ripple on previously landed letters to the left
       if (idx > 0) {
-        const impactTime = startDelay + FLIGHT_MS * (IMPACT_OFFSET - 0.02);
+        const impactTime = startDelay + FLIGHT_MS * IMPACT_OFFSET;
         for (let prev = idx - 1; prev >= 0; prev--) {
           const distance = idx - prev;
-          const rippleDelay = impactTime + (distance - 1) * 45;
-          const intensity = distance === 1 ? 1.0 : distance === 2 ? 0.55 : 0.3;
+          const rippleDelay = impactTime + (distance - 1) * 55;
+          const intensity = distance === 1 ? 1.0 : distance === 2 ? 0.48 : 0.22;
           introTimers.push(
             setTimeout(() => {
-              joltLetter(chars[prev], prev, intensity);
+              nudgeSlot(slots[prev], intensity);
             }, rippleDelay)
           );
         }
@@ -1270,17 +1269,17 @@
     });
 
     // Reveal lower tagline and white-shaded Continue button after final letter settles
-    const totalCollisionDone = 160 + (chars.length - 1) * STAGGER_MS + FLIGHT_MS * 0.78;
+    const totalDone = INITIAL_DELAY_MS + (chars.length - 1) * STAGGER_MS + FLIGHT_MS * 0.82;
     introTimers.push(
       setTimeout(() => {
         tagline?.classList.add("is-visible");
-      }, totalCollisionDone)
+      }, totalDone)
     );
     introTimers.push(
       setTimeout(() => {
         el.introBtn?.classList.add("is-visible");
         el.introBtn?.focus({ preventScroll: true });
-      }, totalCollisionDone + 150)
+      }, totalDone + 200)
     );
   }
 
@@ -1300,13 +1299,14 @@
     const forceIntro = new URLSearchParams(location.search).has("intro");
     const alreadySeen = sessionStorage.getItem(INTRO_SESSION_KEY) === "1";
     el.introBtn.addEventListener("click", dismissIntroOverlay);
-    el.replayBtn.addEventListener("click", showIntroOverlay);
+    el.replayBtn.addEventListener("click", () => showIntroOverlay(true));
 
-    // Interactive bounce if user hovers/clicks any letter on the intro stage
-    $$(".wm-char", el.intro).forEach((ch, idx) => {
-      ch.addEventListener("mouseenter", () => {
-        joltLetter(ch, idx, 0.65);
-        if (idx > 0) setTimeout(() => joltLetter($$(".wm-char", el.intro)[idx - 1], idx - 1, 0.4), 45);
+    // Interactive bounce if user hovers any letter on the intro stage
+    const slots = $$(".wm-slot", el.intro);
+    slots.forEach((slot, idx) => {
+      slot.addEventListener("mouseenter", () => {
+        nudgeSlot(slot, 0.65);
+        if (idx > 0) setTimeout(() => nudgeSlot(slots[idx - 1], 0.35), 50);
       });
     });
 
@@ -1315,7 +1315,7 @@
       el.intro.setAttribute("aria-hidden", "true");
       document.body.classList.remove("intro-lock");
     } else {
-      showIntroOverlay();
+      showIntroOverlay(false);
     }
   }
 

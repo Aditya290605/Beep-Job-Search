@@ -13,6 +13,8 @@ import os
 import json
 import logging
 import re
+import urllib.request
+import urllib.error
 from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime, timezone
 
@@ -207,13 +209,191 @@ def heuristic_fallback_tagger(jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]
     return tagged
 
 
+def _call_openai_compatible_api(
+    jobs_batch: List[Dict[str, Any]],
+    api_key: str
+) -> Tuple[List[Dict[str, Any]], int, int, float]:
+    """
+    Calls Groq (gsk_...) or OpenRouter (sk-or-...) OpenAI-compatible JSON endpoint
+    using Python's standard library urllib.request. Zero billing/prepay setup required on Groq.
+    """
+    is_groq = api_key.startswith("gsk_")
+    url = "https://api.groq.com/openai/v1/chat/completions" if is_groq else "https://openrouter.ai/api/v1/chat/completions"
+    model = "llama-3.3-70b-versatile" if is_groq else "google/gemini-2.5-flash-lite"
+
+    schema_instruction = (
+        TAGGING_SYSTEM_PROMPT
+        + "\nReturn ONLY a JSON object with a single key \"items\" containing the array of classified job objects: "
+        + "{\"items\": [{\"id\": int, \"role\": str, \"city\": str, \"is_fresher_friendly\": bool, \"min_exp\": int, \"max_exp\": int, \"skills\": [str], \"confidence\": float}]}"
+    )
+    prompt = f"Analyze and classify these fresher job postings:\n\n{build_tagging_payload(jobs_batch)}"
+
+    body = {
+        "model": model,
+        "temperature": 0.1,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": schema_instruction},
+            {"role": "user", "content": prompt}
+        ]
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+            "User-Agent": "BeepJobHub/1.0"
+        },
+        method="POST"
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        resp_data = json.loads(resp.read().decode("utf-8"))
+
+    content = resp_data["choices"][0]["message"]["content"].strip()
+    parsed = json.loads(content)
+    parsed_results = parsed.get("items") if isinstance(parsed, dict) else parsed
+    if not isinstance(parsed_results, list):
+        raise ValueError(f"Expected list in 'items', got: {content[:200]}")
+
+    usage = resp_data.get("usage") or {}
+    in_tokens = int(usage.get("prompt_tokens") or (len(prompt) // 4))
+    out_tokens = int(usage.get("completion_tokens") or (len(content) // 4))
+    cost_usd = calculate_llm_cost(in_tokens, out_tokens, "gemini-2.5-flash-lite")
+    return parsed_results, in_tokens, out_tokens, cost_usd
+
+
+def _call_gemini_rest_api(
+    jobs_batch: List[Dict[str, Any]],
+    model_name: str,
+    api_key: str = "",
+    vertex_token: str = ""
+) -> Tuple[List[Dict[str, Any]], int, int, float]:
+    """
+    Calls Gemini 2.5 Flash-Lite over HTTPS using Python's standard library urllib.request.
+    Automatically routes:
+    - gsk_... / sk-or-... -> Groq / OpenRouter JSON API
+    - AIza... -> Normal Google Gemini API (generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent)
+    """
+    if api_key and (api_key.startswith("gsk_") or api_key.startswith("sk-")):
+        return _call_openai_compatible_api(jobs_batch, api_key)
+
+    clean_model = "gemini-3.5-flash-lite" if ("2.0-flash-lite" in model_name or "2.5-flash-lite" in model_name) else model_name
+    vertex_region = getattr(config, "VERTEX_REGION", "us-central1")
+    prompt = f"Analyze and classify these fresher job postings:\n\n{build_tagging_payload(jobs_batch)}"
+
+    body = {
+        "systemInstruction": {
+            "role": "system",
+            "parts": [{"text": TAGGING_SYSTEM_PROMPT}]
+        },
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": prompt}]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.1,
+            "responseMimeType": "application/json",
+            "responseSchema": TAGGING_RESPONSE_SCHEMA
+        }
+    }
+
+    if api_key:
+        urls = [
+            f"https://aiplatform.googleapis.com/v1/publishers/google/models/{clean_model}:generateContent?key={api_key}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={api_key}",
+        ]
+        headers = {"Content-Type": "application/json"}
+    else:
+        candidate_models = list(dict.fromkeys([clean_model, "gemini-2.5-flash-lite", "gemini-2.5-flash"]))
+        urls = []
+        for m in candidate_models:
+            urls.append(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent"
+            )
+            urls.append(
+                f"https://aiplatform.googleapis.com/v1/projects/{config.PROJECT_ID}"
+                f"/locations/global/publishers/google/models/{m}:generateContent"
+            )
+            urls.append(
+                f"https://us-central1-aiplatform.googleapis.com/v1/projects/{config.PROJECT_ID}"
+                f"/locations/us-central1/publishers/google/models/{m}:generateContent"
+            )
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {vertex_token}",
+            "x-goog-user-project": config.PROJECT_ID
+        }
+
+    resp_data = None
+    last_err = None
+    payload_bytes = json.dumps(body).encode("utf-8")
+    for url in urls:
+        for attempt in range(3):
+            try:
+                req = urllib.request.Request(
+                    url,
+                    data=payload_bytes,
+                    headers=headers,
+                    method="POST"
+                )
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    resp_data = json.loads(resp.read().decode("utf-8"))
+                    break
+            except urllib.error.HTTPError as he:
+                err_body = he.read().decode("utf-8", errors="ignore")[:1200]
+                last_err = RuntimeError(f"HTTP {he.code} on {url}: {err_body}")
+                if he.code in (503, 429) and attempt < 2:
+                    import time
+                    time.sleep(2.0 * (attempt + 1))
+                    continue
+                break
+            except Exception as ex:
+                last_err = ex
+                break
+        if resp_data is not None:
+            break
+
+    if resp_data is None:
+        raise last_err or RuntimeError("All Vertex AI endpoints failed")
+
+    candidates = resp_data.get("candidates") or []
+    if not candidates:
+        raise ValueError(f"Empty candidates from Gemini REST API: {resp_data}")
+
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    response_text = (parts[0].get("text") or "").strip()
+    parsed_results = json.loads(response_text)
+
+    usage = resp_data.get("usageMetadata") or {}
+    in_tokens = int(usage.get("promptTokenCount") or (len(prompt) // 4))
+    out_tokens = int(usage.get("candidatesTokenCount") or (len(response_text) // 4))
+    cost_usd = calculate_llm_cost(in_tokens, out_tokens, model_name)
+
+    return parsed_results, in_tokens, out_tokens, cost_usd
+
+
 def tag_job_batch_vertex(jobs_batch: List[Dict[str, Any]], model_name: str = config.VERTEX_AI_MODEL) -> Tuple[List[Dict[str, Any]], int, int, float]:
     """
-    Calls Vertex AI Gemini with JSON Schema structured output.
+    Calls Gemini Flash-Lite (via REST API if GEMINI_API_KEY / VERTEX_ACCESS_TOKEN is set,
+    or via Vertex AI Python SDK on Cloud Run) with JSON Schema structured output.
     Returns: (tagged_results, input_tokens, output_tokens, cost_usd)
     """
+    api_key = os.environ.get("GEMINI_API_KEY") or config.GEMINI_API_KEY
+    vertex_token = os.environ.get("VERTEX_ACCESS_TOKEN") or config.VERTEX_ACCESS_TOKEN
+
+    if api_key or vertex_token:
+        try:
+            mode_label = "Gemini REST API" if api_key else "Vertex AI REST API"
+            logger.info(f"Calling live {mode_label} ({model_name}) for batch of {len(jobs_batch)} jobs...")
+            return _call_gemini_rest_api(jobs_batch, model_name, api_key=api_key, vertex_token=vertex_token)
+        except Exception as e:
+            logger.warning(f"Live {mode_label} call failed ({e}); falling back to heuristic tagger.")
+
     if not HAS_VERTEX:
-        logger.info("Vertex AI SDK not available; using heuristic tagger fallback.")
+        logger.info("Vertex AI SDK / API key not configured; using heuristic tagger fallback.")
         results = heuristic_fallback_tagger(jobs_batch)
         in_tok = len(json.dumps(jobs_batch)) // 4
         out_tok = len(json.dumps(results)) // 4
@@ -221,7 +401,8 @@ def tag_job_batch_vertex(jobs_batch: List[Dict[str, Any]], model_name: str = con
         return results, in_tok, out_tok, cost
 
     try:
-        vertexai.init(project=config.PROJECT_ID, location=config.REGION)
+        vertex_region = getattr(config, "VERTEX_REGION", "us-central1")
+        vertexai.init(project=config.PROJECT_ID, location=vertex_region)
         model = GenerativeModel(
             model_name=model_name,
             system_instruction=TAGGING_SYSTEM_PROMPT
