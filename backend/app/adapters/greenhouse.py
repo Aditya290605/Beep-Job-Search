@@ -83,7 +83,8 @@ GREENHOUSE_COMPANIES = [
     ("commvault", "Commvault"),
     ("toast", "Toast"),
     ("roblox", "Roblox"),
-    ("couchbaseinc", "Couchbase")
+    ("couchbaseinc", "Couchbase"),
+    ("hackerrank", "HackerRank")
 ]
 
 

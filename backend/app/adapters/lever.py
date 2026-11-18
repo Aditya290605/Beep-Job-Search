@@ -25,7 +25,8 @@ LEVER_COMPANIES = [
     ("hevodata", "Hevo Data"),
     ("porter", "Porter"),
     ("pocketfm", "Pocket FM"),
-    ("fampay", "FamPay")
+    ("fampay", "FamPay"),
+    ("weloglobal", "Welo Global")
 ]
 
 
@@ -42,16 +43,32 @@ def fetch_single_lever_board(slug: str, display_name: str) -> List[RawJob]:
             title = item.get("text", "").strip()
             categories = item.get("categories") or {}
             location_raw = categories.get("location", "").strip()
-            desc_plain = item.get("descriptionPlain") or clean_html(item.get("description", ""))
+
+            # Compile complete description: intro + lists (requirements/bullet points) + additional text
+            parts = []
+            intro = item.get("descriptionPlain") or clean_html(item.get("description", ""))
+            if intro:
+                parts.append(intro)
+            for lst in item.get("lists", []):
+                heading = lst.get("text", "").strip()
+                content = clean_html(lst.get("content", ""))
+                if heading and content:
+                    parts.append(f"{heading}:\n{content}")
+                elif content:
+                    parts.append(content)
+            add_plain = item.get("additionalPlain") or clean_html(item.get("additional", ""))
+            if add_plain:
+                parts.append(add_plain)
+            full_desc = "\n\n".join(parts)
 
             valid_loc, city = is_india_location(location_raw)
             if not valid_loc or city == "Unknown":
                 continue
 
-            if not is_fresher_job(title, desc_plain):
+            if not is_fresher_job(title, full_desc):
                 continue
 
-            job_type = extract_job_type(title, desc_plain)
+            job_type = extract_job_type(title, full_desc)
             apply_url = item.get("hostedUrl") or item.get("applyUrl") or ""
             source_job_id = str(item.get("id", ""))
 
@@ -70,7 +87,7 @@ def fetch_single_lever_board(slug: str, display_name: str) -> List[RawJob]:
                 city=city,
                 job_type=job_type,
                 apply_url=apply_url,
-                description=desc_plain[:3000],
+                description=full_desc[:4000],
                 source_name="lever",
                 source_job_id=source_job_id,
                 posted_date=posted_date

@@ -34,6 +34,31 @@ GITHUB_FEEDS = [
         "format": "json"
     },
     {
+        "name": "Summer-2025-Internship-List",
+        "url": "https://raw.githubusercontent.com/arunike/Summer-2025-Internship-List/main/README.md",
+        "format": "markdown"
+    },
+    {
+        "name": "cvrve-Summer-2025-JSON",
+        "url": "https://raw.githubusercontent.com/cvrve/Summer2025-Internships/dev/.github/scripts/listings.json",
+        "format": "json"
+    },
+    {
+        "name": "SimplifyJobs-Summer-Live-JSON",
+        "url": "https://raw.githubusercontent.com/SimplifyJobs/Summer2025-Internships/dev/.github/scripts/listings.json",
+        "format": "json"
+    },
+    {
+        "name": "SimplifyJobs-Summer-2024-JSON",
+        "url": "https://raw.githubusercontent.com/SimplifyJobs/Summer2024-Internships/dev/.github/scripts/listings.json",
+        "format": "json"
+    },
+    {
+        "name": "SimplifyJobs-NewGrad-Live-JSON",
+        "url": "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/.github/scripts/listings.json",
+        "format": "json"
+    },
+    {
         "name": "India-Tech-Internships-Tracker",
         "url": "https://raw.githubusercontent.com/Sarthzk/internship-tracker/main/README.md",
         "format": "markdown"
@@ -44,18 +69,13 @@ GITHUB_FEEDS = [
         "format": "markdown"
     },
     {
-        "name": "SimplifyJobs-New-Grad",
-        "url": "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/README.md",
-        "format": "markdown"
-    },
-    {
-        "name": "SimplifyJobs-Internships",
-        "url": "https://raw.githubusercontent.com/SimplifyJobs/Summer2025-Internships/dev/README.md",
-        "format": "markdown"
-    },
-    {
         "name": "SWE-College-Jobs-2026",
         "url": "https://raw.githubusercontent.com/speedyapply/2026-SWE-College-Jobs/main/README.md",
+        "format": "markdown"
+    },
+    {
+        "name": "SWE-College-Jobs-2025",
+        "url": "https://raw.githubusercontent.com/speedyapply/2025-SWE-College-Jobs/main/README.md",
         "format": "markdown"
     }
 ]
@@ -86,10 +106,11 @@ def extract_url_from_row(line: str) -> str:
         if url.startswith("http"):
             return url
 
-    # Pattern 2: <a href="url">
-    href_match = re.search(r'href=["\'](https?://[^"\']+)["\']', line, re.I)
-    if href_match:
-        return href_match.group(1).strip()
+    # Pattern 2: Prioritize explicit career / ATS links in href="..."
+    for m in re.finditer(r'href=["\'](https?://[^"\']+)["\']', line, re.I):
+        u = m.group(1).strip()
+        if any(k in u.lower() for k in ["jobs", "careers", "boards", "greenhouse", "lever", "ashby", "myworkday", "smartrecruiters", "apply", "talent", "comparably"]):
+            return u
 
     # Pattern 3: Any markdown link pointing to an external job page
     for match in re.finditer(r'\[[^\]]+\]\((https?://[^)]+)\)', line):
@@ -97,6 +118,12 @@ def extract_url_from_row(line: str) -> str:
         # Avoid linking to GitHub repos or contributor profiles
         if "github.com" not in url:
             return url
+
+    # Fallback: any external href
+    for m in re.finditer(r'href=["\'](https?://[^"\']+)["\']', line, re.I):
+        u = m.group(1).strip()
+        if "github.com" not in u:
+            return u
 
     return ""
 
@@ -113,15 +140,19 @@ def fetch_single_feed(feed: dict) -> List[RawJob]:
         if feed.get("format") == "json":
             data = json.loads(content)
             for item in data:
-                # Tracker keeps closed listings for history; only open ones are real openings
-                if item.get("status") != "open":
+                # Sarthzk schema: status == 'open'
+                if item.get("status") and item.get("status") != "open":
                     continue
+                # SimplifyJobs schema: is_closed == False
+                if item.get("is_closed"):
+                    continue
+
                 title = clean_markdown_cell(item.get("title", ""))
-                company = clean_markdown_cell(item.get("company", ""))
+                company = clean_markdown_cell(item.get("company_name") or item.get("company") or "")
                 apply_url = (item.get("url") or "").strip()
                 locs = item.get("locations") or []
-                location_raw = ", ".join(locs) if locs else "India"
-                posted_date = item.get("last_seen") or item.get("date_posted") or item.get("first_seen")
+                location_raw = ", ".join(locs) if isinstance(locs, list) else str(locs)
+                posted_date = item.get("last_seen") or item.get("date_posted") or item.get("first_seen") or item.get("date_updated")
 
                 if not apply_url or not apply_url.startswith("http"):
                     continue
@@ -153,6 +184,7 @@ def fetch_single_feed(feed: dict) -> List[RawJob]:
 
         # Markdown Table handler
         lines = content.splitlines()
+        last_seen_company = ""
         for line in lines:
             if "|" not in line:
                 continue
@@ -177,6 +209,12 @@ def fetch_single_feed(feed: dict) -> List[RawJob]:
                 continue
 
             company = clean_markdown_cell(cells[0])
+            # Handle indentation symbols (↳, », -) signifying same company as previous row
+            if company in ("↳", "", "»", "-") and last_seen_company:
+                company = last_seen_company
+            elif company.lower() not in ("company", "name", "organization", "employer"):
+                last_seen_company = company
+
             title = clean_markdown_cell(cells[1])
             location_raw = clean_markdown_cell(cells[2]) if len(cells) > 2 else ""
 

@@ -1,5 +1,44 @@
 [
   {
+    "id": 26,
+    "started_at": "2026-11-18T19:09:45.454620+00:00",
+    "finished_at": "2026-11-18T19:12:17.977353+00:00",
+    "status": "success",
+    "sources_summary": "{\"greenhouse\": 23, \"lever\": 19, \"ashby\": 1, \"smartrecruiters\": 12, \"jobicy\": 0, \"remotive\": 1, \"github_feeds\": 267}",
+    "total_fetched": 323,
+    "new_posts": 101,
+    "duplicates_skipped": 222,
+    "tagged_count": 101,
+    "failed_count": 0,
+    "error_message": null
+  },
+  {
+    "id": 25,
+    "started_at": "2026-11-18T15:43:17.562409+00:00",
+    "finished_at": "2026-11-18T15:45:02.992405+00:00",
+    "status": "success",
+    "sources_summary": "{\"greenhouse\": 20, \"lever\": 16, \"ashby\": 1, \"smartrecruiters\": 18, \"jobicy\": 0, \"remotive\": 1, \"github_feeds\": 173}",
+    "total_fetched": 229,
+    "new_posts": 25,
+    "duplicates_skipped": 204,
+    "tagged_count": 25,
+    "failed_count": 0,
+    "error_message": null
+  },
+  {
+    "id": 24,
+    "started_at": "2026-11-18T15:24:44.028133+00:00",
+    "finished_at": "2026-11-18T15:25:26.465430+00:00",
+    "status": "success",
+    "sources_summary": "{\"greenhouse\": 20, \"lever\": 16, \"ashby\": 1, \"smartrecruiters\": 18, \"jobicy\": 0, \"remotive\": 1, \"github_feeds\": 144}",
+    "total_fetched": 200,
+    "new_posts": 18,
+    "duplicates_skipped": 182,
+    "tagged_count": 18,
+    "failed_count": 0,
+    "error_message": null
+  },
+  {
     "id": 1,
     "started_at": "2026-11-18T06:22:05.868068+00:00",
     "finished_at": "2026-11-18T06:22:43.044110+00:00",

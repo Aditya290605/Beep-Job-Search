@@ -50,12 +50,15 @@ Roles Taxonomy (MUST be one of these exact values):
 City Canonicalization:
 - Canonical Indian cities: Bangalore, Mumbai, Pune, Hyderabad, Gurugram, Delhi, Noida, Chennai, Kolkata, Ahmedabad, Jaipur, Kochi, Coimbatore.
 - If remote within India or worldwide, return "Remote".
-- If the city cannot be determined with certainty, return "Unknown".
+- If the job is located in India but specific city is not a single metro (e.g. "India, Multiple Locations", "India", or unlisted Indian city), return "India (Multiple/Other)" or "Remote" or the dominant Indian city mentioned.
+- If the role is definitively outside India or foreign-only, return "Unknown".
 
-Fresher Rules:
-- is_fresher_friendly: true if 0-1 years exp, college student, intern, graduate trainee, or entry-level. false if 2+ years exp required.
-- min_exp and max_exp: Integer years of experience required (default 0 and 1 for fresher roles).
-- skills: Array of up to 6 key technical or role-specific skills (e.g. ["Python", "SQL", "React"]).
+Fresher & Experience Rules:
+- is_fresher_friendly: Boolean. Set TRUE ONLY IF the opening is genuine for freshers, entry-level, interns, new college grads, or candidates with 0-1 years of experience.
+- Set is_fresher_friendly: FALSE if the job text requires 2+ years of experience, mentions an experience range starting at 2 or above (e.g. 2-5 years, 3-6 years, 4+ years), or is clearly mid/senior level.
+- min_exp: Integer minimum years of experience required according to the job text (e.g. 0 for fresher/intern, 2 for 2-5 yrs, 3 for 3+ yrs).
+- max_exp: Integer maximum years of experience required (e.g. 1 for fresher/intern, 5 for 2-5 yrs).
+- skills: Array of 4 to 8 concrete technical, tool, or domain skills explicitly extracted from the job requirements (e.g. ["Python", "SQL", "AWS", "Docker", "Algorithms", "Git"]). Extract the exact technologies, tools, libraries, or operational domains stated in the qualifications.
 - confidence: Float between 0.0 and 1.0 indicating classification confidence.
 """
 
@@ -79,7 +82,7 @@ TAGGING_RESPONSE_SCHEMA = {
             },
             "confidence": {"type": "NUMBER"}
         },
-        "required": ["id", "role", "city", "is_fresher_friendly", "confidence", "skills"]
+        "required": ["id", "role", "city", "is_fresher_friendly", "min_exp", "max_exp", "confidence", "skills"]
     }
 }
 
@@ -92,10 +95,29 @@ def calculate_llm_cost(input_tokens: int, output_tokens: int, model_name: str = 
     return round(cost_in + cost_out, 6)
 
 
+def extract_relevant_snippet(desc: str, max_chars: int = 2500) -> str:
+    """Extracts a comprehensive snippet of the job description, prioritizing requirements."""
+    if not desc:
+        return ""
+    if len(desc) <= max_chars:
+        return desc
+
+    # Search for requirements or qualifications headings
+    req_match = re.search(r'(?:requirements|qualifications|what you(?:’|\')ll need|you should apply if|what we(?:’|\')re looking for|skills|eligibility):?', desc, re.IGNORECASE)
+    if req_match:
+        start_idx = max(0, req_match.start() - 200)
+        snippet = desc[start_idx:start_idx + max_chars]
+        if len(snippet) < 800:
+            snippet = desc[:max_chars]
+        return snippet
+    return desc[:max_chars]
+
+
 def build_tagging_payload(jobs: List[Dict[str, Any]]) -> str:
-    """Formats a batch of untagged jobs into a lightweight JSON payload for the LLM."""
+    """Formats a batch of untagged jobs into a rich JSON payload for the LLM."""
     payload = []
     for j in jobs:
+        snippet = extract_relevant_snippet(j.get("description") or "", max_chars=2500)
         payload.append({
             "id": j["id"],
             "title": j["title"],
@@ -103,7 +125,8 @@ def build_tagging_payload(jobs: List[Dict[str, Any]]) -> str:
             "location_raw": j.get("location_raw", ""),
             "city": j.get("city", ""),
             "job_type": j.get("job_type", "job"),
-            "description_snippet": (j.get("description") or "")[:400]
+            "description": snippet,
+            "description_snippet": snippet
         })
     return json.dumps(payload, indent=2)
 
@@ -247,7 +270,7 @@ def _call_openai_compatible_api(
         },
         method="POST"
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=60) as resp:
         resp_data = json.loads(resp.read().decode("utf-8"))
 
     content = resp_data["choices"][0]["message"]["content"].strip()
@@ -302,8 +325,8 @@ def _call_gemini_rest_api(
 
     if api_key:
         urls = [
-            f"https://aiplatform.googleapis.com/v1/publishers/google/models/{clean_model}:generateContent?key={api_key}",
             f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={api_key}",
+            f"https://aiplatform.googleapis.com/v1/publishers/google/models/{clean_model}:generateContent?key={api_key}",
         ]
         headers = {"Content-Type": "application/json"}
     else:
@@ -331,7 +354,7 @@ def _call_gemini_rest_api(
     last_err = None
     payload_bytes = json.dumps(body).encode("utf-8")
     for url in urls:
-        for attempt in range(3):
+        for attempt in range(5):
             try:
                 req = urllib.request.Request(
                     url,
@@ -339,20 +362,22 @@ def _call_gemini_rest_api(
                     headers=headers,
                     method="POST"
                 )
-                with urllib.request.urlopen(req, timeout=30) as resp:
+                with urllib.request.urlopen(req, timeout=60) as resp:
                     resp_data = json.loads(resp.read().decode("utf-8"))
                     break
             except urllib.error.HTTPError as he:
                 err_body = he.read().decode("utf-8", errors="ignore")[:1200]
                 last_err = RuntimeError(f"HTTP {he.code} on {url}: {err_body}")
-                if he.code in (503, 429) and attempt < 2:
+                if he.code in (503, 429) and attempt < 4:
                     import time
-                    time.sleep(2.0 * (attempt + 1))
+                    time.sleep(2.5 * (attempt + 1))
                     continue
                 break
             except Exception as ex:
                 last_err = ex
                 break
+        if resp_data:
+            break
         if resp_data is not None:
             break
 
@@ -503,18 +528,24 @@ def enrich_untagged_jobs(db: Database, run_id: Optional[int] = None, batch_size:
         try:
             update_cur = update_conn.cursor()
             now_iso = datetime.now(timezone.utc).isoformat()
+            batch_city_map = {j["id"]: j.get("city") for j in batch}
             for item in tagged_results:
                 job_id = item["id"]
                 role = item.get("role", "Other")
                 city = item.get("city", "Remote")
+                orig_city = batch_city_map.get(job_id)
+                # Keep valid India location if LLM tentatively returned Unknown, unless original was generic Remote
+                if city == "Unknown" and orig_city and orig_city not in ("Unknown", "Remote"):
+                    city = orig_city
+
                 is_fresher = 1 if item.get("is_fresher_friendly", True) else 0
                 min_exp = item.get("min_exp", 0)
                 max_exp = item.get("max_exp", 1)
                 skills_json = json.dumps(item.get("skills", []))
                 conf = float(item.get("confidence", 1.0))
                 
-                # If city is Unknown, deactivate it so it doesn't appear in search
-                is_active = 0 if city == "Unknown" else 1
+                # If role requires 2+ yrs exp, is not fresher-friendly, or city is Unknown, deactivate it
+                is_active = 0 if (city == "Unknown" or is_fresher == 0 or min_exp >= 2) else 1
 
                 if db.is_sqlite:
                     update_cur.execute(
