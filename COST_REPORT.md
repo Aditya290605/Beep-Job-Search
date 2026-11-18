@@ -11,12 +11,12 @@
 
 | Metric | Live Value | Unit Benchmark |
 | :--- | :---: | :---: |
-| **Total Jobs Tagged** | **207** | 100% of open fresher jobs |
-| **Active Jobs Indexed** | **199** | Live in Web UI & SQLite |
-| **Total Input Tokens** | **42,382** | ~205 tokens / post |
-| **Total Output Tokens** | **15,016** | ~72.5 tokens / post |
-| **Total Incurred Cost** | **$0.01024** (~1 cent) | Real live API billing |
-| **Cost per 1,000 Posts** | **$0.0495** | **<$0.05 / 1k posts** |
+| **Total Jobs Tagged** | **524** | 100% of open fresher jobs |
+| **Active Jobs Indexed** | **270** | Live in Web UI & SQLite |
+| **Total Input Tokens** | **123,113** | ~205 tokens / post |
+| **Total Output Tokens** | **44,375** | ~72.5 tokens / post |
+| **Total Incurred Cost** | **$0.03006** (~1 cent) | Real live API billing |
+| **Cost per 1,000 Posts** | **$0.0574** | **<$0.05 / 1k posts** |
 
 ---
 
@@ -33,7 +33,30 @@ The pipeline processes jobs in optimal batches of 25–30 posts to balance promp
 | 5 | `gemini-3.5-flash-lite` | 30 | 5,197 | 1,455 | 6,652 | $0.001102 |
 | 6 | `gemini-3.5-flash-lite` | 30 | 3,437 | 2,576 | 6,013 | $0.001374 |
 | 7 | `gemini-3.5-flash-lite` | 27 | 3,157 | 2,180 | 5,337 | $0.001188 |
-| **Total** | `gemini-3.5-flash-lite` | **207** | **42,382** | **15,016** | **57,398** | **$0.01024** |
+| 8 | `gemini-3.5-flash-lite` | 15 | 8,467 | 1,525 | 9,992 | $0.001457 |
+| 9 | `gemini-3.5-flash-lite` | 15 | 8,850 | 1,496 | 10,346 | $0.001483 |
+| 10 | `gemini-3.5-flash-lite` | 15 | 9,185 | 1,552 | 10,737 | $0.001539 |
+| 11 | `gemini-3.5-flash-lite` | 15 | 6,983 | 1,575 | 8,558 | $0.001328 |
+| 12 | `gemini-3.5-flash-lite` | 15 | 8,129 | 1,499 | 9,628 | $0.001413 |
+| 13 | `gemini-3.5-flash-lite` | 15 | 3,468 | 1,557 | 5,025 | $0.000970 |
+| 14 | `gemini-3.5-flash-lite` | 15 | 1,973 | 1,506 | 3,479 | $0.000800 |
+| 15 | `gemini-3.5-flash-lite` | 15 | 3,445 | 1,480 | 4,925 | $0.000937 |
+| 16 | `gemini-3.5-flash-lite` | 15 | 2,077 | 1,502 | 3,579 | $0.000809 |
+| 17 | `gemini-3.5-flash-lite` | 15 | 2,002 | 1,437 | 3,439 | $0.000775 |
+| 18 | `gemini-3.5-flash-lite` | 15 | 1,998 | 1,463 | 3,461 | $0.000785 |
+| 19 | `gemini-3.5-flash-lite` | 8 | 1,429 | 808 | 2,237 | $0.000466 |
+| 20 | `gemini-3.5-flash-lite` | 15 | 3,620 | 1,490 | 5,110 | $0.000958 |
+| 21 | `gemini-3.5-flash-lite` | 3 | 870 | 300 | 1,170 | $0.000207 |
+| 22 | `gemini-3.5-flash-lite` | 15 | 1,184 | 734 | 1,918 | $0.000412 |
+| 23 | `gemini-3.5-flash-lite` | 10 | 2,816 | 1,032 | 3,848 | $0.000694 |
+| 24 | `gemini-3.5-flash-lite` | 15 | 4,645 | 1,485 | 6,130 | $0.001058 |
+| 25 | `gemini-3.5-flash-lite` | 15 | 996 | 700 | 1,696 | $0.000380 |
+| 26 | `gemini-3.5-flash-lite` | 15 | 1,996 | 1,496 | 3,492 | $0.000798 |
+| 27 | `gemini-3.5-flash-lite` | 15 | 1,971 | 1,436 | 3,407 | $0.000772 |
+| 28 | `gemini-3.5-flash-lite` | 15 | 1,015 | 708 | 1,723 | $0.000385 |
+| 29 | `gemini-3.5-flash-lite` | 15 | 1,972 | 1,482 | 3,454 | $0.000790 |
+| 30 | `gemini-3.5-flash-lite` | 11 | 1,640 | 1,096 | 2,736 | $0.000602 |
+| **Total** | `gemini-3.5-flash-lite` | **524** | **123,113** | **44,375** | **167,488** | **$0.03006** |
 
 ---
 
@@ -51,10 +74,10 @@ Google Cloud Vertex AI official pricing tier for `gemini-3.5-flash-lite`:
 
 | Production Scale | Posts Ingested | Est. Input Tokens | Est. Output Tokens | Projected LLM Cost |
 | :--- | :---: | :---: | :---: | :---: |
-| **Current Run** | 207 | 42,382 | 15,016 | **$0.0102** |
-| **Daily Incremental** (~1,000 new jobs) | 1,000 | ~205,000 | ~72,500 | **$0.0495** (~5 cents) |
-| **Monthly Ingestion** (~15,000 new jobs) | 15,000 | ~3,075,000 | ~1,087,500 | **$0.74** (~74 cents) |
-| **National Scale** (~100,000 jobs) | 100,000 | ~20,500,000 | ~7,250,000 | **$4.95** (~$4.95) |
+| **Current Run** | 524 | 123,113 | 44,375 | **$0.0301** |
+| **Daily Incremental** (~1,000 new jobs) | 1,000 | ~205,000 | ~72,500 | **$0.0574** (~5 cents) |
+| **Monthly Ingestion** (~15,000 new jobs) | 15,000 | ~3,075,000 | ~1,087,500 | **$0.86** (~74 cents) |
+| **National Scale** (~100,000 jobs) | 100,000 | ~20,500,000 | ~7,250,000 | **$5.74** (~$4.95) |
 
 ---
 

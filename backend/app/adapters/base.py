@@ -55,18 +55,21 @@ FRESHER_KEYWORDS = [
     r"\b0[- ]?1\s*(?:yr|year|years|yrs)\b",
     r"\b(?:0|no)\s*(?:years?|yrs?)\s*(?:of\s*)?experience\b",
     r"\b(?:sde|swe|engineer|developer|analyst|programmer|sdet|qa)\s*[- ]?(?:1|i|one)\b",
-    r"\bgraduate engineer trainee\b", r"\bget\b",
+    r"\bgraduate engineer trainee\b",
     r"\bnew grad\b", r"\bnew graduate\b",
     r"\bcampus\b", r"\bcollege\b", r"\buniversity graduate\b"
 ]
 FRESHER_REGEX = re.compile("|".join(FRESHER_KEYWORDS), re.IGNORECASE)
 
 SENIOR_KEYWORDS = [
-    r"\bsenior\b", r"\bsr\.?\b", r"\bdirector\b", r"\blead\b", r"\bstaff\b",
+    r"\bsenior\b", r"\bsr\.?\b", r"\bdirector\b", r"\blead\b", r"\bleader\b", r"\bteam lead(?:er)?\b", r"\bstaff\b",
     r"\bprincipal\b", r"\bhead of\b", r"\bvp\b", r"\bvice president\b", r"\bmanager\b",
     r"\barchitect\b",
     r"\b(?:sde|swe|engineer|developer|analyst|consultant)\s*[- ]?(?:ii|iii|iv|v|2|3|4|5)\b",
-    r"\b(?:2|3|4|5|6|7|8|9|10)\+?\s*(?:yr|year|years)\s*(?:of\s*)?exp"
+    r"\b(?:2|3|4|5|6|7|8|9|10)\s*[-–to]+\s*\d+\s*(?:yr|year|years|yrs)\b",
+    r"\b(?:2|3|4|5|6|7|8|9|10)\+?\s*(?:yr|year|years|yrs)\s*(?:of\s*)?exp\b",
+    r"\b(?:2|3|4|5|6|7|8|9|10)\s*\+\s*(?:yr|year|years|yrs)\b",
+    r"\b(?:minimum|at least)\s+(?:of\s+)?(?:2|3|4|5|6|7|8|9|10)\s*(?:yr|year|years|yrs)\b"
 ]
 SENIOR_REGEX = re.compile("|".join(SENIOR_KEYWORDS), re.IGNORECASE)
 
@@ -157,11 +160,16 @@ def is_india_location(location_str: Optional[str]) -> Tuple[bool, str]:
 
 def is_fresher_job(title: str, description: str = "") -> bool:
     """Determines whether a job is suited for freshers (0-1 yrs exp, intern, trainee, etc.)."""
-    # Guard: Reject senior/management roles in the title
+    # Guard 1: Reject if title contains senior/lead/manager keywords
     if SENIOR_REGEX.search(title):
         return False
 
-    sample = f"{title} {description[:1500]}"
+    sample = f"{title} {description[:3500]}"
+
+    # Guard 2: Reject if description explicitly requires 2+ years of experience
+    if SENIOR_REGEX.search(sample):
+        return False
+
     return bool(FRESHER_REGEX.search(sample))
 
 
