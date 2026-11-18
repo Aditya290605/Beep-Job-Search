@@ -36,15 +36,46 @@ INDIAN_CITIES = {
     "chandigarh": "Chandigarh",
     "indore": "Indore",
     "bhopal": "Bhopal",
-    "coimbatore": "Coimbatore"
+    "coimbatore": "Coimbatore",
+    "nagpur": "Nagpur",
+    "vadodara": "Vadodara",
+    "bhubaneswar": "Bhubaneswar",
+    "visakhapatnam": "Visakhapatnam",
+    "vizag": "Visakhapatnam",
+    "mysore": "Mysore",
+    "surat": "Surat",
+    "goa": "Goa"
 }
 
 FRESHER_KEYWORDS = [
     r"\bintern\b", r"\binternship\b", r"\bfresher\b", r"\bgraduate\b",
-    r"\bentry[- ]level\b", r"\bjunior\b", r"\btrainee\b", r"\bassociate\b",
-    r"\bapprentice\b", r"\b0[- ]?1\s*(?:yr|year|years)\b"
+    r"\bentry[- ]level\b", r"\bjunior\b", r"\btrainee\b",
+    r"\bassociate\b(?!\s+(?:director|manager|vp|partner|lead|principal))",
+    r"\bapprentice(?:ship)?\b",
+    r"\b0[- ]?1\s*(?:yr|year|years|yrs)\b",
+    r"\b(?:0|no)\s*(?:years?|yrs?)\s*(?:of\s*)?experience\b",
+    r"\b(?:sde|swe|engineer|developer|analyst|programmer|sdet|qa)\s*[- ]?(?:1|i|one)\b",
+    r"\bgraduate engineer trainee\b", r"\bget\b",
+    r"\bnew grad\b", r"\bnew graduate\b",
+    r"\bcampus\b", r"\bcollege\b", r"\buniversity graduate\b"
 ]
 FRESHER_REGEX = re.compile("|".join(FRESHER_KEYWORDS), re.IGNORECASE)
+
+SENIOR_KEYWORDS = [
+    r"\bsenior\b", r"\bsr\.?\b", r"\bdirector\b", r"\blead\b", r"\bstaff\b",
+    r"\bprincipal\b", r"\bhead of\b", r"\bvp\b", r"\bvice president\b", r"\bmanager\b",
+    r"\barchitect\b",
+    r"\b(?:sde|swe|engineer|developer|analyst|consultant)\s*[- ]?(?:ii|iii|iv|v|2|3|4|5)\b",
+    r"\b(?:2|3|4|5|6|7|8|9|10)\+?\s*(?:yr|year|years)\s*(?:of\s*)?exp"
+]
+SENIOR_REGEX = re.compile("|".join(SENIOR_KEYWORDS), re.IGNORECASE)
+
+FOREIGN_EXCLUSIONS = [
+    r"\busa\b", r"\bus\b", r"\bunited states\b", r"\buk\b", r"\bunited kingdom\b",
+    r"\bcanada\b", r"\bgermany\b", r"\bemea\b", r"\blatam\b", r"\beurope\b",
+    r"\baustralia\b", r"\bireland\b", r"\bpoland\b", r"\bfrance\b", r"\bjapan\b"
+]
+FOREIGN_REGEX = re.compile("|".join(FOREIGN_EXCLUSIONS), re.IGNORECASE)
 
 
 def fetch_json(url: str, headers: Optional[Dict[str, str]] = None, timeout: int = 10, retries: int = 2) -> Any:
@@ -90,25 +121,35 @@ def is_india_location(location_str: Optional[str]) -> Tuple[bool, str]:
     """
     Verifies if a location string corresponds to India or an India-eligible remote role.
     Returns (is_valid, normalized_city).
-    If city cannot be determined, returns (False, "Unknown").
+    If city cannot be determined or is foreign-only, returns (False, "Unknown").
     """
     if not location_str or not isinstance(location_str, str):
         return False, "Unknown"
 
     loc_lower = location_str.lower()
-    is_remote = "remote" in loc_lower
+    has_real_india = bool(re.search(r'\bindia\b', loc_lower))
+    has_global = any(w in loc_lower for w in ["worldwide", "global", "anywhere"])
+
+    # Reject foreign locations unless India, Worldwide, or Global is explicitly mentioned
+    # (prevents "Indianapolis, IN" or "Indiana" from falsely matching India)
+    if FOREIGN_REGEX.search(loc_lower) and not has_real_india and not has_global:
+        return False, "Unknown"
 
     # 1. Match specific known Indian cities first
     for pattern, canonical in INDIAN_CITIES.items():
         if pattern in loc_lower:
             return True, canonical
 
-    # 2. Check Remote if eligible for India / APAC / Worldwide
-    if is_remote and ("india" in loc_lower or "apac" in loc_lower or "anywhere" in loc_lower or "worldwide" in loc_lower or "remote" in loc_lower):
-        return True, "Remote"
+    # 2. Check Remote / Global eligibility
+    is_remote_signal = any(w in loc_lower for w in ["remote", "worldwide", "anywhere", "global", "telecommute", "work from home"])
+    if is_remote_signal or loc_lower.strip() in ("worldwide", "anywhere", "global", "apac"):
+        if any(w in loc_lower for w in ["india", "apac", "worldwide", "anywhere", "global"]):
+            return True, "Remote"
+        if loc_lower.strip() in ("remote", "fully remote", "remote / flexible", "work from anywhere"):
+            return True, "Remote"
 
-    # 3. Check general "India"
-    if "india" in loc_lower:
+    # 3. Check general "India" as a standalone word
+    if has_real_india:
         return True, "India (Multiple/Other)"
 
     return False, "Unknown"
@@ -116,7 +157,11 @@ def is_india_location(location_str: Optional[str]) -> Tuple[bool, str]:
 
 def is_fresher_job(title: str, description: str = "") -> bool:
     """Determines whether a job is suited for freshers (0-1 yrs exp, intern, trainee, etc.)."""
-    sample = f"{title} {description[:500]}"
+    # Guard: Reject senior/management roles in the title
+    if SENIOR_REGEX.search(title):
+        return False
+
+    sample = f"{title} {description[:1500]}"
     return bool(FRESHER_REGEX.search(sample))
 
 

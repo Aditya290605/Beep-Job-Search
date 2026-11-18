@@ -27,6 +27,7 @@ from app.adapters.ashby import fetch_ashby_jobs
 from app.adapters.smartrecruiters import fetch_smartrecruiters_jobs
 from app.adapters.jobicy import fetch_jobicy_jobs
 from app.adapters.remotive import fetch_remotive_jobs
+from app.adapters.github_jobs import fetch_github_fresher_jobs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,7 +59,8 @@ def run_pipeline(db: Database = None) -> PipelineRunStats:
         ("ashby", fetch_ashby_jobs),
         ("smartrecruiters", fetch_smartrecruiters_jobs),
         ("jobicy", fetch_jobicy_jobs),
-        ("remotive", fetch_remotive_jobs)
+        ("remotive", fetch_remotive_jobs),
+        ("github_feeds", fetch_github_fresher_jobs)
     ]
 
     all_raw_jobs: List[RawJob] = []

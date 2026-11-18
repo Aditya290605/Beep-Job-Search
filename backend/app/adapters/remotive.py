@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 
 
 def fetch_remotive_jobs() -> List[RawJob]:
-    """Fetches and normalizes fresher/intern remote software jobs from Remotive."""
+    """Fetches and normalizes fresher/intern remote tech & data jobs from Remotive."""
     results: List[RawJob] = []
-    url = "https://remotive.com/api/remote-jobs?category=software-dev&limit=100"
+    url = "https://remotive.com/api/remote-jobs?limit=100"
 
     try:
         data = fetch_json(url, timeout=10, retries=1)

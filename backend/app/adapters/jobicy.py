@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 def fetch_jobicy_jobs() -> List[RawJob]:
     """Fetches and normalizes fresher/intern remote jobs from Jobicy."""
     results: List[RawJob] = []
-    url = "https://jobicy.com/api/v2/remote-jobs?count=50"
+    url = "https://jobicy.com/api/v2/remote-jobs?count=50&geo=apac"
 
     try:
         data = fetch_json(url, timeout=10, retries=2)
