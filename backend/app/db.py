@@ -131,18 +131,22 @@ class Database:
                     cols = [
                         "normalized_key", "title", "company", "location_raw", "city",
                         "job_type", "posted_date", "apply_url", "description", "source_name",
-                        "source_job_id", "first_seen_at", "last_seen_at", "is_active",
-                        "role_tag", "is_fresher_friendly", "min_exp", "max_exp", "skills",
-                        "confidence", "tagged_at"
+                        "source_job_id", "first_seen_at", "last_seen_at", "expires_at",
+                        "last_verified_at", "is_active", "role_tag", "is_fresher_friendly",
+                        "min_exp", "max_exp", "skills", "confidence", "tagged_at"
                     ]
+                    is_active_val = bool(j.get("is_active", 1))
+                    is_fresher_val = bool(j.get("is_fresher_friendly", True))
                     vals = [
                         j.get("normalized_key"), j.get("title"), j.get("company"),
                         j.get("location_raw"), j.get("city"), j.get("job_type"),
                         j.get("posted_date"), j.get("apply_url"), j.get("description"),
                         j.get("source_name"), j.get("source_job_id"), j.get("first_seen_at"),
-                        j.get("last_seen_at"), j.get("is_active", 1), j.get("role_tag"),
-                        1 if j.get("is_fresher_friendly") else 0, j.get("min_exp", 0),
-                        j.get("max_exp", 1),
+                        j.get("last_seen_at"), j.get("expires_at"), j.get("last_verified_at"),
+                        (1 if is_active_val else 0) if self.is_sqlite else is_active_val,
+                        j.get("role_tag"),
+                        (1 if is_fresher_val else 0) if self.is_sqlite else is_fresher_val,
+                        j.get("min_exp", 0), j.get("max_exp", 1),
                         json.dumps(j.get("skills", [])) if isinstance(j.get("skills"), list) else j.get("skills"),
                         j.get("confidence", 0.85), j.get("tagged_at")
                     ]
@@ -173,6 +177,8 @@ class Database:
                             "INSERT INTO pipeline_runs (id, status, started_at, finished_at, total_fetched, new_posts, duplicates_skipped, tagged_count, failed_count) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING",
                             (r.get("id"), r.get("status"), r.get("started_at"), finished, r.get("total_fetched"), r.get("new_posts"), r.get("duplicates_skipped"), r.get("tagged_count"), r.get("failed_count"))
                         )
+                if not self.is_sqlite:
+                    cur.execute("SELECT setval(pg_get_serial_sequence('pipeline_runs', 'id'), COALESCE((SELECT MAX(id) FROM pipeline_runs), 1))")
                 conn.commit()
 
             costs_path = os.path.join(seed_dir, "seed_costs.json")
@@ -190,6 +196,8 @@ class Database:
                             "INSERT INTO llm_cost_logs (id, run_id, model_name, posts_count, input_tokens, output_tokens, cost_usd, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING",
                             (c.get("id"), c.get("run_id"), c.get("model_name"), c.get("posts_count"), c.get("input_tokens"), c.get("output_tokens"), c.get("cost_usd"), c.get("created_at"))
                         )
+                if not self.is_sqlite:
+                    cur.execute("SELECT setval(pg_get_serial_sequence('llm_cost_logs', 'id'), COALESCE((SELECT MAX(id) FROM llm_cost_logs), 1))")
                 conn.commit()
         finally:
             if not self._sqlite_mem_conn:
