@@ -1199,17 +1199,17 @@
       ch.style.transform = `translateX(68vw) translateY(${yEm}em) rotate(${rot + 4}deg)`;
     });
 
-    // On initial page entry, wait until window load + fonts ready + deliberate 500ms pause
+    // On initial page entry, wait until window load + fonts ready + clean 300ms pause
     // so 'B' never starts moving before the site has cleanly rendered
     if (!isReplay) {
       await waitForPageAndFonts();
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 300));
     }
 
-    const STAGGER_MS = 920;
-    const FLIGHT_MS = 1450;
+    const STAGGER_MS = 680;
+    const FLIGHT_MS = 1100;
     const IMPACT_OFFSET = 0.76;
-    const INITIAL_DELAY_MS = 120;
+    const INITIAL_DELAY_MS = 100;
 
     chars.forEach((ch, idx) => {
       const { rot, yEm } = LETTER_POSE[idx];
@@ -1257,7 +1257,7 @@
         const impactTime = startDelay + FLIGHT_MS * IMPACT_OFFSET;
         for (let prev = idx - 1; prev >= 0; prev--) {
           const distance = idx - prev;
-          const rippleDelay = impactTime + (distance - 1) * 55;
+          const rippleDelay = impactTime + (distance - 1) * 45;
           const intensity = distance === 1 ? 1.0 : distance === 2 ? 0.48 : 0.22;
           introTimers.push(
             setTimeout(() => {
@@ -1279,7 +1279,7 @@
       setTimeout(() => {
         el.introBtn?.classList.add("is-visible");
         el.introBtn?.focus({ preventScroll: true });
-      }, totalDone + 200)
+      }, totalDone + 150)
     );
   }
 
