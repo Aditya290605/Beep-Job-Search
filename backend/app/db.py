@@ -32,6 +32,29 @@ except ImportError:
 import sqlite3
 
 
+def _normalize_ts(val: Any) -> Optional[str]:
+    """Converts Unix epoch ints/floats or strings to valid ISO-8601 UTC strings for PostgreSQL TIMESTAMPTZ."""
+    if val is None or val == "":
+        return None
+    if isinstance(val, datetime):
+        return val.isoformat()
+    if isinstance(val, (int, float)):
+        ts = float(val) / 1000.0 if val > 10_000_000_000 else float(val)
+        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+    s = str(val).strip()
+    if not s:
+        return None
+    if s.isdigit():
+        iv = int(s)
+        ts = float(iv) / 1000.0 if iv > 10_000_000_000 else float(iv)
+        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+    try:
+        datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return s
+    except Exception:
+        return None
+
+
 class Database:
     def __init__(self, db_url: Optional[str] = None):
         self.db_url = db_url or config.get_database_url()
@@ -58,8 +81,12 @@ class Database:
     def init_db(self, schema_file: str = "schema.sql"):
         """Initializes tables using schema.sql (or SQLite-compatible translation)."""
         if not os.path.exists(schema_file):
-            logger.warning(f"Schema file {schema_file} not found.")
-            return
+            fallback_schema = os.path.join(os.path.dirname(__file__), "schema.sql")
+            if os.path.exists(fallback_schema):
+                schema_file = fallback_schema
+            else:
+                logger.warning(f"Schema file {schema_file} not found.")
+                return
 
         with open(schema_file, "r") as f:
             ddl = f.read()
@@ -140,15 +167,15 @@ class Database:
                     vals = [
                         j.get("normalized_key"), j.get("title"), j.get("company"),
                         j.get("location_raw"), j.get("city"), j.get("job_type"),
-                        j.get("posted_date"), j.get("apply_url"), j.get("description"),
-                        j.get("source_name"), j.get("source_job_id"), j.get("first_seen_at"),
-                        j.get("last_seen_at"), j.get("expires_at"), j.get("last_verified_at"),
+                        _normalize_ts(j.get("posted_date")), j.get("apply_url"), j.get("description"),
+                        j.get("source_name"), j.get("source_job_id"), _normalize_ts(j.get("first_seen_at")),
+                        _normalize_ts(j.get("last_seen_at")), _normalize_ts(j.get("expires_at")), _normalize_ts(j.get("last_verified_at")),
                         (1 if is_active_val else 0) if self.is_sqlite else is_active_val,
                         j.get("role_tag"),
                         (1 if is_fresher_val else 0) if self.is_sqlite else is_fresher_val,
                         j.get("min_exp", 0), j.get("max_exp", 1),
                         json.dumps(j.get("skills", [])) if isinstance(j.get("skills"), list) else j.get("skills"),
-                        j.get("confidence", 0.85), j.get("tagged_at")
+                        j.get("confidence", 0.85), _normalize_ts(j.get("tagged_at"))
                     ]
                     if self.is_sqlite:
                         placeholders = ", ".join(["?"] * len(cols))
@@ -267,6 +294,9 @@ class Database:
                         existing_job_id = fuzzy_match_id
 
                 now_str = datetime.now(timezone.utc).isoformat()
+                posted_iso = _normalize_ts(job.posted_date) or now_str
+                expires_iso = _normalize_ts(job.expires_at)
+                verified_iso = _normalize_ts(job.last_verified_at) or now_str
                 if existing_job_id:
                     duplicates_skipped += 1
                     # Refresh last_seen_at / expires_at / last_verified_at (and upgrade stub description if real JD arrived)
@@ -276,17 +306,17 @@ class Database:
                             if existing_desc_len < 250:
                                 cur.execute(
                                     "UPDATE jobs SET last_seen_at = ?, last_verified_at = COALESCE(?, last_verified_at), expires_at = COALESCE(?, expires_at), description = ?, tagged_at = NULL WHERE id = ?",
-                                    (now_str, job.last_verified_at or now_str, job.expires_at, job.description, existing_job_id)
+                                    (now_str, verified_iso, expires_iso, job.description, existing_job_id)
                                 )
                             else:
                                 cur.execute(
                                     "UPDATE jobs SET last_seen_at = ?, last_verified_at = COALESCE(?, last_verified_at), expires_at = COALESCE(?, expires_at), description = ? WHERE id = ?",
-                                    (now_str, job.last_verified_at or now_str, job.expires_at, job.description, existing_job_id)
+                                    (now_str, verified_iso, expires_iso, job.description, existing_job_id)
                                 )
                         else:
                             cur.execute(
                                 "UPDATE jobs SET last_seen_at = ?, last_verified_at = COALESCE(?, last_verified_at), expires_at = COALESCE(?, expires_at) WHERE id = ?",
-                                (now_str, job.last_verified_at or now_str, job.expires_at, existing_job_id)
+                                (now_str, verified_iso, expires_iso, existing_job_id)
                             )
                         cur.execute(
                             """
@@ -298,7 +328,7 @@ class Database:
                     else:
                         cur.execute(
                             "UPDATE jobs SET last_seen_at = NOW(), last_verified_at = COALESCE(%s, NOW()), expires_at = COALESCE(%s, expires_at) WHERE id = %s",
-                            (job.last_verified_at, job.expires_at, existing_job_id)
+                            (verified_iso, expires_iso, existing_job_id)
                         )
                         cur.execute(
                             """
@@ -322,9 +352,9 @@ class Database:
                             """,
                             (
                                 norm_key, job.title, job.company, job.location_raw, job.city,
-                                job.job_type, job.posted_date or now_str, job.apply_url, job.description,
+                                job.job_type, posted_iso, job.apply_url, job.description,
                                 job.source_name, job.source_job_id, now_str, now_str,
-                                job.expires_at, job.last_verified_at or now_str
+                                expires_iso, verified_iso
                             )
                         )
                         job_id = cur.lastrowid
@@ -348,8 +378,8 @@ class Database:
                             """,
                             (
                                 norm_key, job.title, job.company, job.location_raw, job.city,
-                                job.job_type, job.posted_date, job.apply_url, job.description,
-                                job.source_name, job.source_job_id, job.expires_at, job.last_verified_at
+                                job.job_type, posted_iso, job.apply_url, job.description,
+                                job.source_name, job.source_job_id, expires_iso, verified_iso
                             )
                         )
                         job_id = cur.fetchone()[0]
