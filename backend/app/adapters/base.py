@@ -4,6 +4,7 @@ adapters/base.py - Shared utilities for source adapters
 
 import urllib.request
 import urllib.error
+import html as html_lib
 import json
 import re
 import time
@@ -61,22 +62,30 @@ FRESHER_KEYWORDS = [
 ]
 FRESHER_REGEX = re.compile("|".join(FRESHER_KEYWORDS), re.IGNORECASE)
 
-SENIOR_KEYWORDS = [
+SENIOR_TITLE_KEYWORDS = [
     r"\bsenior\b", r"\bsr\.?\b", r"\bdirector\b", r"\blead\b", r"\bleader\b", r"\bteam lead(?:er)?\b", r"\bstaff\b",
     r"\bprincipal\b", r"\bhead of\b", r"\bvp\b", r"\bvice president\b", r"\bmanager\b",
     r"\barchitect\b",
-    r"\b(?:sde|swe|engineer|developer|analyst|consultant)\s*[- ]?(?:ii|iii|iv|v|2|3|4|5)\b",
-    r"\b(?:2|3|4|5|6|7|8|9|10)\s*[-–to]+\s*\d+\s*(?:yr|year|years|yrs)\b",
-    r"\b(?:2|3|4|5|6|7|8|9|10)\+?\s*(?:yr|year|years|yrs)\s*(?:of\s*)?exp\b",
-    r"\b(?:2|3|4|5|6|7|8|9|10)\s*\+\s*(?:yr|year|years|yrs)\b",
-    r"\b(?:minimum|at least)\s+(?:of\s+)?(?:2|3|4|5|6|7|8|9|10)\s*(?:yr|year|years|yrs)\b"
+    r"\b(?:sde|swe|engineer|developer|analyst|consultant|specialist)\s*[- ]?(?:ii|iii|iv|v|2|3|4|5)\b"
 ]
+SENIOR_EXP_KEYWORDS = [
+    r"\b(?:2|3|4|5|6|7|8|9|10|11|12)\s*[-–to]+\s*\d+\+?\s*(?:yr|year|years|yrs)\b",
+    r"\b(?:2|3|4|5|6|7|8|9|10|11|12)\+\s*(?:yr|year|years|yrs)\b",
+    r"\b(?:2|3|4|5|6|7|8|9|10|11|12)\+?\s*(?:yr|year|years|yrs)\s+(?:of\s+)?(?:\w+\s+){0,3}(?:experience|exp)\b",
+    r"\b(?:minimum|at least)\s+(?:of\s+)?(?:2|3|4|5|6|7|8|9|10|two|three|four|five|six|seven|eight|nine|ten)\+?\s*(?:yr|year|years|yrs)\b",
+    r"\b(?:two|three|four|five|six|seven|eight|nine|ten)\s*(?:or more|\+|[-–]|to\s+\w+)\s*(?:yr|year|years|yrs)\b",
+    r"\b(?:two|three|four|five|six|seven|eight|nine|ten)\s+(?:yr|year|years|yrs)\s+(?:of\s+)?(?:\w+\s+){0,3}(?:experience|exp)\b"
+]
+SENIOR_KEYWORDS = SENIOR_TITLE_KEYWORDS + SENIOR_EXP_KEYWORDS
+SENIOR_TITLE_REGEX = re.compile("|".join(SENIOR_TITLE_KEYWORDS), re.IGNORECASE)
+SENIOR_EXP_REGEX = re.compile("|".join(SENIOR_EXP_KEYWORDS), re.IGNORECASE)
 SENIOR_REGEX = re.compile("|".join(SENIOR_KEYWORDS), re.IGNORECASE)
 
 FOREIGN_EXCLUSIONS = [
     r"\busa\b", r"\bus\b", r"\bunited states\b", r"\buk\b", r"\bunited kingdom\b",
     r"\bcanada\b", r"\bgermany\b", r"\bemea\b", r"\blatam\b", r"\beurope\b",
-    r"\baustralia\b", r"\bireland\b", r"\bpoland\b", r"\bfrance\b", r"\bjapan\b"
+    r"\baustralia\b", r"\bireland\b", r"\bpoland\b", r"\bfrance\b", r"\bjapan\b",
+    r"\b(?:mst|pst|est|cst)\b", r"\b(?:california|texas|new york|atlanta|seattle|austin|san francisco|chicago|boston)\b"
 ]
 FOREIGN_REGEX = re.compile("|".join(FOREIGN_EXCLUSIONS), re.IGNORECASE)
 
@@ -109,18 +118,25 @@ def fetch_json(url: str, headers: Optional[Dict[str, str]] = None, timeout: int 
 
 
 def clean_html(raw_html: Optional[str]) -> str:
-    """Strips HTML tags and normalizes whitespace."""
+    """Unescapes HTML entities (including double-escaped Greenhouse HTML), strips tags cleanly, and preserves readability."""
     if not raw_html:
         return ""
-    # Strip HTML tags
-    clean_text = re.sub(r'<[^>]+>', ' ', raw_html)
-    # Decode HTML entities
-    clean_text = clean_text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"').replace("&#39;", "'").replace("&nbsp;", " ")
-    # Normalize multiple whitespace
-    return re.sub(r'\s+', ' ', clean_text).strip()
+    # Unescape twice to handle double-escaped payloads (e.g. &lt;p&gt; from Greenhouse API)
+    text = html_lib.unescape(html_lib.unescape(raw_html))
+    # Remove script/style blocks completely
+    text = re.sub(r'<(script|style)[^>]*>.*?</\1>', ' ', text, flags=re.IGNORECASE | re.DOTALL)
+    # Turn list items and block tags into newlines so paragraphs & bullets survive
+    text = re.sub(r'<li[^>]*>', '\n• ', text, flags=re.IGNORECASE)
+    text = re.sub(r'</(?:p|div|h[1-6]|li|tr|section|article)>|<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+    # Strip remaining HTML tags
+    text = re.sub(r'<[^>]+>', ' ', text)
+    # Normalize spaces per line and collapse excessive blank lines
+    lines = [re.sub(r'[ \t\xa0]+', ' ', ln).strip() for ln in text.splitlines()]
+    cleaned = "\n".join(ln for ln in lines if ln)
+    return cleaned.strip()
 
 
-def is_india_location(location_str: Optional[str]) -> Tuple[bool, str]:
+def is_india_location(location_str: Optional[str], allow_bare_remote: bool = True) -> Tuple[bool, str]:
     """
     Verifies if a location string corresponds to India or an India-eligible remote role.
     Returns (is_valid, normalized_city).
@@ -134,7 +150,7 @@ def is_india_location(location_str: Optional[str]) -> Tuple[bool, str]:
     has_global = any(w in loc_lower for w in ["worldwide", "global", "anywhere"])
 
     # Reject foreign locations unless India, Worldwide, or Global is explicitly mentioned
-    # (prevents "Indianapolis, IN" or "Indiana" from falsely matching India)
+    # (prevents "Indianapolis, IN" or "Indiana" or "Remote-United-States" from falsely matching India)
     if FOREIGN_REGEX.search(loc_lower) and not has_real_india and not has_global:
         return False, "Unknown"
 
@@ -148,7 +164,7 @@ def is_india_location(location_str: Optional[str]) -> Tuple[bool, str]:
     if is_remote_signal or loc_lower.strip() in ("worldwide", "anywhere", "global", "apac"):
         if any(w in loc_lower for w in ["india", "apac", "worldwide", "anywhere", "global"]):
             return True, "Remote"
-        if loc_lower.strip() in ("remote", "fully remote", "remote / flexible", "work from anywhere"):
+        if allow_bare_remote and loc_lower.strip() in ("remote", "fully remote", "remote / flexible", "work from anywhere"):
             return True, "Remote"
 
     # 3. Check general "India" as a standalone word
@@ -160,16 +176,15 @@ def is_india_location(location_str: Optional[str]) -> Tuple[bool, str]:
 
 def is_fresher_job(title: str, description: str = "") -> bool:
     """Determines whether a job is suited for freshers (0-1 yrs exp, intern, trainee, etc.)."""
-    # Guard 1: Reject if title contains senior/lead/manager keywords
-    if SENIOR_REGEX.search(title):
+    # Guard 1: Reject if title contains senior/lead/manager/level-2+ keywords
+    if SENIOR_TITLE_REGEX.search(title) or SENIOR_EXP_REGEX.search(title):
         return False
 
-    sample = f"{title} {description[:3500]}"
-
-    # Guard 2: Reject if description explicitly requires 2+ years of experience
-    if SENIOR_REGEX.search(sample):
+    # Guard 2: Reject if description explicitly requires 2+ years of experience (digits OR spelled-out words)
+    if description and SENIOR_EXP_REGEX.search(description[:8000]):
         return False
 
+    sample = f"{title} {description[:5000]}"
     return bool(FRESHER_REGEX.search(sample))
 
 

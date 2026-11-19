@@ -34,15 +34,16 @@ except ImportError:
 
 
 TAGGING_SYSTEM_PROMPT = """You are an expert technical recruiter analyzing job postings for college students and freshers in India.
-Classify each post according to our strict taxonomy and extract key qualification signals.
+Classify each post according to our strict taxonomy and extract EVERY real qualification signal directly from the job description.
 
 Roles Taxonomy (MUST be one of these exact values):
-- SDE: Software engineering, frontend, backend, fullstack, mobile, DevOps, QA/testing, cloud, cybersecurity.
-- Data/ML: Data science, data analytics, ML/AI engineer, BI analyst, data engineering.
+- SDE: Software engineering, backend, frontend, fullstack, mobile, DevOps, cloud, QA/SDET, application/cloud security.
+- Data/ML: Data science, data analytics, ML/AI engineer, BI analyst, data engineering, quantitative research.
+- Hardware: Hardware engineering, silicon, VLSI, RTL, FPGA, ASIC, PCB, motherboard, embedded electronics, firmware, power electronics, semiconductor, RF/circuit design, board bring-up. NEVER put Hardware/VLSI/Silicon/PCB/Motherboard/Embedded Electronics roles into SDE!
 - Design: UI/UX, product design, graphic design, visual design.
 - Marketing: Growth, digital marketing, SEO, content, social media, performance marketing.
 - Sales: Business development (BDR/SDR), inside sales, account executive.
-- Ops: Business operations, customer support, supply chain, logistics, program management.
+- Ops: Business operations, customer support, supply chain, logistics, program/product management.
 - Finance: Accounting, audit, financial analysis, investment, tax.
 - HR: Recruiting, talent acquisition, human resources, people ops.
 - Other: Any role that does not fit the above categories.
@@ -51,14 +52,14 @@ City Canonicalization:
 - Canonical Indian cities: Bangalore, Mumbai, Pune, Hyderabad, Gurugram, Delhi, Noida, Chennai, Kolkata, Ahmedabad, Jaipur, Kochi, Coimbatore.
 - If remote within India or worldwide, return "Remote".
 - If the job is located in India but specific city is not a single metro (e.g. "India, Multiple Locations", "India", or unlisted Indian city), return "India (Multiple/Other)" or "Remote" or the dominant Indian city mentioned.
-- If the role is definitively outside India or foreign-only, return "Unknown".
+- If the role is definitively outside India or foreign-only (e.g., US-only, UK-only), return "Unknown".
 
-Fresher & Experience Rules:
-- is_fresher_friendly: Boolean. Set TRUE ONLY IF the opening is genuine for freshers, entry-level, interns, new college grads, or candidates with 0-1 years of experience.
-- Set is_fresher_friendly: FALSE if the job text requires 2+ years of experience, mentions an experience range starting at 2 or above (e.g. 2-5 years, 3-6 years, 4+ years), or is clearly mid/senior level.
-- min_exp: Integer minimum years of experience required according to the job text (e.g. 0 for fresher/intern, 2 for 2-5 yrs, 3 for 3+ yrs).
-- max_exp: Integer maximum years of experience required (e.g. 1 for fresher/intern, 5 for 2-5 yrs).
-- skills: Array of 4 to 8 concrete technical, tool, or domain skills explicitly extracted from the job requirements (e.g. ["Python", "SQL", "AWS", "Docker", "Algorithms", "Git"]). Extract the exact technologies, tools, libraries, or operational domains stated in the qualifications.
+Fresher & Experience Rules (STRICT — ZERO COMPROMISE):
+- is_fresher_friendly: Boolean. Set TRUE ONLY IF the opening genuinely welcomes freshers, interns, apprentices, new college graduates, or candidates with 0-1 years of industry experience.
+- Set is_fresher_friendly: FALSE if the job description requires 2+ years of experience — watch carefully for BOTH digits (2+ years, 2-5 years, 3-6 yrs, 4+ yrs) AND spelled-out words ("two or more years", "at least three years", "five or more years", "minimum of two years").
+- min_exp: Integer minimum years of full-time industry experience required by the JD (e.g. 0 for intern/fresher/new grad, 2 for "2-5 years", 5 for "five or more years").
+- max_exp: Integer maximum years of experience stated (e.g. 1 for fresher/intern, 5 for 2-5 yrs, 8 for 5+ yrs).
+- skills: Array of ALL concrete technical, tool, language, framework, hardware, protocol, and domain skills explicitly mentioned in the job description (extract 8 to 15 distinct skills whenever the JD lists that many; capture specific tools/standards like SAML 2.0, OAuth 2.0, Verilog, SystemVerilog, PCB Design, SPICE, Oscilloscope, PyTorch, FastAPI, Docker, Kubernetes, Active Directory, etc.). Do NOT fabricate generic skills like "Data Structures" or "Python" if they are not actually mentioned or required in the JD.
 - confidence: Float between 0.0 and 1.0 indicating classification confidence.
 """
 
@@ -95,21 +96,24 @@ def calculate_llm_cost(input_tokens: int, output_tokens: int, model_name: str = 
     return round(cost_in + cost_out, 6)
 
 
-def extract_relevant_snippet(desc: str, max_chars: int = 2500) -> str:
-    """Extracts a comprehensive snippet of the job description, prioritizing requirements."""
+def extract_relevant_snippet(desc: str, max_chars: int = 6000) -> str:
+    """Extracts up to 6,000 chars of the job description, preserving BOTH intro context AND full requirements/qualifications."""
     if not desc:
         return ""
     if len(desc) <= max_chars:
         return desc
 
     # Search for requirements or qualifications headings
-    req_match = re.search(r'(?:requirements|qualifications|what you(?:’|\')ll need|you should apply if|what we(?:’|\')re looking for|skills|eligibility):?', desc, re.IGNORECASE)
-    if req_match:
-        start_idx = max(0, req_match.start() - 200)
-        snippet = desc[start_idx:start_idx + max_chars]
-        if len(snippet) < 800:
-            snippet = desc[:max_chars]
-        return snippet
+    req_match = re.search(
+        r"(?:requirements|qualifications|what['’]s required|what you(?:’|')ll need|you should apply if|what we(?:’|')re looking for|skills|eligibility|preferred qualifications|minimum qualifications):?",
+        desc,
+        re.IGNORECASE,
+    )
+    if req_match and req_match.start() > 1400:
+        intro = desc[:1400].rstrip()
+        req_start = max(1400, req_match.start() - 150)
+        reqs = desc[req_start:req_start + (max_chars - len(intro) - 10)]
+        return f"{intro}\n...\n{reqs}"
     return desc[:max_chars]
 
 
@@ -117,7 +121,7 @@ def build_tagging_payload(jobs: List[Dict[str, Any]]) -> str:
     """Formats a batch of untagged jobs into a rich JSON payload for the LLM."""
     payload = []
     for j in jobs:
-        snippet = extract_relevant_snippet(j.get("description") or "", max_chars=2500)
+        snippet = extract_relevant_snippet(j.get("description") or "", max_chars=6000)
         payload.append({
             "id": j["id"],
             "title": j["title"],
@@ -133,20 +137,23 @@ def build_tagging_payload(jobs: List[Dict[str, Any]]) -> str:
 
 def heuristic_fallback_tagger(jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Deterministic fallback / offline tagger used during tests or if Vertex AI is temporarily unreachable.
-    Guarantees the pipeline always produces valid taxonomy output without throwing uncaught exceptions.
+    Deterministic fallback / offline tagger used during unit tests or if LLM API is temporarily unreachable.
+    Guarantees valid taxonomy output and strictly respects Hardware vs SDE boundaries & experience guards.
     """
+    from app.adapters.base import SENIOR_EXP_REGEX
+
     tagged = []
     for j in jobs:
         title_lower = (j.get("title") or "").lower()
         desc_lower = (j.get("description_snippet") or j.get("description") or "").lower()
         text = f"{title_lower} {desc_lower}"
 
-        # 1. Role classification (Title takes primary precedence to prevent description noise)
+        # 1. Role classification (Hardware checked BEFORE SDE!)
         role = "Other"
-        
-        # Check specific title keywords first with word boundary matching
-        if re.search(r'\b(marketing|growth|seo|social media|brand|content|communications)\b', title_lower):
+
+        if re.search(r'\b(hardware|silicon|vlsi|fpga|asic|rtl|pcb|motherboard|embedded|firmware|semiconductor|power electronics|circuit|analog|mixed[- ]signal|rf engineer|board bring[- ]up|soc verification)\b', title_lower):
+            role = "Hardware"
+        elif re.search(r'\b(marketing|growth|seo|social media|brand|content|communications)\b', title_lower):
             role = "Marketing"
         elif re.search(r'\b(data|machine learning|ml|ai|analyst|analytics|bi|research|scientist|quant|insights)\b', title_lower):
             role = "Data/ML"
@@ -160,11 +167,12 @@ def heuristic_fallback_tagger(jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]
             role = "Finance"
         elif re.search(r'\b(operations|ops|logistics|supply chain|process|support|customer|program|project|implementation|warehouse|product)\b', title_lower):
             role = "Ops"
-        elif re.search(r'\b(software|sde|swe|developer|backend|frontend|fullstack|devops|cloud|qa|sdet|engineer|technical|it|systems|security|network|silicon|hardware|embedded|quality|test)\b', title_lower):
+        elif re.search(r'\b(software|sde|swe|developer|backend|frontend|fullstack|devops|cloud|qa|sdet|engineer|technical|it|systems|security|network|quality|test)\b', title_lower):
             role = "SDE"
         else:
-            # Fallback to broader text matching with word boundaries
-            if re.search(r'\b(marketing|growth|seo)\b', text):
+            if re.search(r'\b(verilog|systemverilog|vlsi|fpga|asic|pcb|motherboard|schematic|oscilloscope|power electronics)\b', text):
+                role = "Hardware"
+            elif re.search(r'\b(marketing|growth|seo)\b', text):
                 role = "Marketing"
             elif re.search(r'\b(software|sde|developer|backend|frontend|fullstack|devops|cloud|qa|engineer|technical)\b', text):
                 role = "SDE"
@@ -184,50 +192,47 @@ def heuristic_fallback_tagger(jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]
         # 2. City
         city = j.get("city") or "Remote"
 
-        # 3. Skills extraction
+        # 3. Experience check (never falsely mark 2+ yr JDs as fresher even in fallback)
+        is_senior_desc = bool(SENIOR_EXP_REGEX.search(desc_lower))
+
+        # 4. Skills extraction (extract ONLY skills actually present in text; broad real-world vocabulary)
         detected_skills = []
         skill_candidates = [
             ("python", "Python"), ("java", "Java"), ("react", "React"), ("sql", "SQL"),
-            ("javascript", "JavaScript"), ("typescript", "TypeScript"), ("node", "Node.js"),
-            ("c++", "C++"), ("golang", "Go"), ("aws", "AWS"), ("docker", "Docker"),
-            ("kubernetes", "Kubernetes"), ("linux", "Linux"), ("git", "Git"),
-            ("excel", "Excel"), ("figma", "Figma"), ("tableau", "Tableau"),
-            ("power bi", "Power BI"), ("machine learning", "Machine Learning"),
-            ("deep learning", "Deep Learning"), ("pytorch", "PyTorch"),
-            ("tensorflow", "TensorFlow"), ("html", "HTML/CSS"), ("mongodb", "MongoDB"),
-            ("postgresql", "PostgreSQL"), ("testing", "Automation Testing"),
-            ("selenium", "Selenium"), ("android", "Android"), ("ios", "iOS")
+            ("javascript", "JavaScript"), ("typescript", "TypeScript"), ("node.js", "Node.js"), ("nodejs", "Node.js"),
+            ("c++", "C++"), ("golang", "Go"), ("rust", "Rust"), ("aws", "AWS"), ("azure", "Azure"), ("gcp", "GCP"),
+            ("docker", "Docker"), ("kubernetes", "Kubernetes"), ("linux", "Linux"), ("git", "Git"),
+            ("verilog", "Verilog"), ("systemverilog", "SystemVerilog"), ("vhdl", "VHDL"), ("fpga", "FPGA"),
+            ("asic", "ASIC"), ("vlsi", "VLSI"), ("rtl", "RTL Design"), ("pcb", "PCB Design"),
+            ("motherboard", "Motherboard Architecture"), ("firmware", "Firmware"), ("embedded", "Embedded Systems"),
+            ("rtos", "RTOS"), ("spice", "SPICE"), ("oscilloscope", "Oscilloscope"), ("cadence", "Cadence"),
+            ("synopsys", "Synopsys"), ("matlab", "MATLAB"), ("simulink", "Simulink"), ("i2c", "I2C"), ("spi", "SPI"),
+            ("uart", "UART"), ("pcie", "PCIe"), ("ddr", "DDR Memory"), ("arm", "ARM Architecture"),
+            ("saml", "SAML 2.0"), ("oauth", "OAuth 2.0"), ("oidc", "OpenID Connect"), ("scim", "SCIM"),
+            ("active directory", "Active Directory"), ("siem", "SIEM"), ("iam", "IAM"), ("fido2", "FIDO2"),
+            ("excel", "Excel"), ("figma", "Figma"), ("tableau", "Tableau"), ("power bi", "Power BI"),
+            ("machine learning", "Machine Learning"), ("deep learning", "Deep Learning"),
+            ("pytorch", "PyTorch"), ("tensorflow", "TensorFlow"), ("cuda", "CUDA"), ("llm", "LLMs"),
+            ("fastapi", "FastAPI"), ("django", "Django"), ("spring boot", "Spring Boot"),
+            ("html", "HTML/CSS"), ("mongodb", "MongoDB"), ("postgresql", "PostgreSQL"), ("redis", "Redis"),
+            ("kafka", "Kafka"), ("spark", "Apache Spark"), ("airflow", "Airflow"), ("terraform", "Terraform"),
+            ("ci/cd", "CI/CD"), ("rest api", "REST APIs"), ("graphql", "GraphQL"),
+            ("selenium", "Selenium"), ("playwright", "Playwright"), ("android", "Android"), ("ios", "iOS"),
+            ("kotlin", "Kotlin"), ("swift", "Swift"), ("c#", "C#"), (".net", ".NET")
         ]
         for pattern, label in skill_candidates:
-            if re.search(r'\b' + re.escape(pattern) + r'\b', text) and label not in detected_skills:
+            if re.search(r'(?<!\w)' + re.escape(pattern) + r'(?!\w)', text) and label not in detected_skills:
                 detected_skills.append(label)
-
-        role_default_skills = {
-            "SDE": ["Data Structures", "Algorithms", "Python", "Git"],
-            "Data/ML": ["Python", "SQL", "Data Analysis", "Statistics"],
-            "Design": ["Figma", "UI/UX Design", "Wireframing", "Prototyping"],
-            "Marketing": ["Digital Marketing", "Content Strategy", "Growth Analytics"],
-            "Sales": ["Business Development", "Client Communication", "CRM"],
-            "Ops": ["Process Operations", "Cross-functional Coordination", "Excel"],
-            "Finance": ["Financial Analysis", "Excel", "Accounting & Audit"],
-            "HR": ["Talent Acquisition", "Candidate Screening", "HR Operations"],
-            "Other": ["Analytical Thinking", "Problem Solving", "Communication"]
-        }
-        for fallback_skill in role_default_skills.get(role, role_default_skills["Other"]):
-            if len(detected_skills) >= 4:
-                break
-            if fallback_skill not in detected_skills:
-                detected_skills.append(fallback_skill)
 
         tagged.append({
             "id": j["id"],
             "role": role,
             "city": city,
-            "is_fresher_friendly": True,
-            "min_exp": 0,
-            "max_exp": 1,
-            "skills": detected_skills[:5],
-            "confidence": 0.95
+            "is_fresher_friendly": not is_senior_desc,
+            "min_exp": 2 if is_senior_desc else 0,
+            "max_exp": 5 if is_senior_desc else 1,
+            "skills": detected_skills[:12],
+            "confidence": 0.85
         })
     return tagged
 
@@ -318,15 +323,17 @@ def _call_gemini_rest_api(
         ],
         "generationConfig": {
             "temperature": 0.1,
+            "maxOutputTokens": 4096,
             "responseMimeType": "application/json",
             "responseSchema": TAGGING_RESPONSE_SCHEMA
         }
     }
 
     if api_key:
+        candidate_models = list(dict.fromkeys([clean_model, "gemini-2.5-flash-lite", "gemini-2.5-flash"]))
         urls = [
-            f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={api_key}",
-            f"https://aiplatform.googleapis.com/v1/publishers/google/models/{clean_model}:generateContent?key={api_key}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_key}"
+            for m in candidate_models
         ]
         headers = {"Content-Type": "application/json"}
     else:
@@ -462,7 +469,7 @@ def tag_job_batch_vertex(jobs_batch: List[Dict[str, Any]], model_name: str = con
         return results, in_tok, out_tok, cost
 
 
-def enrich_untagged_jobs(db: Database, run_id: Optional[int] = None, batch_size: int = 15, tagger_fn = None) -> int:
+def enrich_untagged_jobs(db: Database, run_id: Optional[int] = None, batch_size: int = 8, tagger_fn = None) -> int:
     """
     Queries newly inserted jobs where tagged_at IS NULL, batches them,
     calls the tagger, updates the database, and logs token usage & cost.

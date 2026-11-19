@@ -38,8 +38,17 @@ def search_jobs(
     limit = max(1, min(100, limit))
     offset = (page - 1) * limit
 
+    # Automatically deactivate any expired jobs on load so expired postings never appear
+    db.deactivate_expired_jobs()
+
     conditions = ["is_active = 1" if db.is_sqlite else "is_active = TRUE"]
     params: List[Any] = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if db.is_sqlite:
+        conditions.append("(expires_at IS NULL OR expires_at = '' OR expires_at > ?)")
+        params.append(now_iso)
+    else:
+        conditions.append("(expires_at IS NULL OR expires_at > NOW())")
 
     # 1. Full-text search / text matching
     if q and q.strip():
@@ -137,13 +146,13 @@ def search_jobs(
             f"SELECT id, normalized_key, title, company, location_raw, city, job_type, "
             f"posted_date, apply_url, description, source_name, source_job_id, "
             f"first_seen_at, last_seen_at, role_tag, is_fresher_friendly, min_exp, "
-            f"max_exp, skills, confidence "
+            f"max_exp, skills, confidence, expires_at, last_verified_at "
             f"FROM jobs{where_clause}{order_clause} LIMIT ? OFFSET ?"
             if db.is_sqlite else
             f"SELECT id, normalized_key, title, company, location_raw, city, job_type, "
             f"posted_date, apply_url, description, source_name, source_job_id, "
             f"first_seen_at, last_seen_at, role_tag, is_fresher_friendly, min_exp, "
-            f"max_exp, skills, confidence "
+            f"max_exp, skills, confidence, expires_at, last_verified_at "
             f"FROM jobs{where_clause}{order_clause} LIMIT %s OFFSET %s"
         )
         data_params = list(params) + [limit, offset]
@@ -174,6 +183,8 @@ def search_jobs(
                     "skills": parsed_skills,
                     "confidence": float(r["confidence"]) if r["confidence"] else 1.0,
                     "first_seen_at": r["first_seen_at"],
+                    "expires_at": r["expires_at"],
+                    "last_verified_at": r["last_verified_at"],
                     "sources": []
                 }
             else:
@@ -197,6 +208,8 @@ def search_jobs(
                     "skills": parsed_skills,
                     "confidence": float(r[19]) if r[19] else 1.0,
                     "first_seen_at": r[12].isoformat() if hasattr(r[12], 'isoformat') else r[12],
+                    "expires_at": r[20].isoformat() if hasattr(r[20], 'isoformat') else r[20],
+                    "last_verified_at": r[21].isoformat() if hasattr(r[21], 'isoformat') else r[21],
                     "sources": []
                 }
             jobs.append(job_dict)
@@ -236,6 +249,7 @@ def get_filter_options(db: Database) -> Dict[str, Any]:
     """
     Returns active counts for cities, roles, job types, and sources to populate filter UI.
     """
+    db.deactivate_expired_jobs()
     conn = db.get_connection()
     try:
         cur = conn.cursor()

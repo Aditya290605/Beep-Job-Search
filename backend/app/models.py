@@ -32,6 +32,8 @@ class RawJob:
     source_name: str
     source_job_id: str
     posted_date: Optional[str] = None  # ISO format string or None
+    expires_at: Optional[str] = None   # Official last apply date / expiry ISO timestamp
+    last_verified_at: Optional[str] = None  # Last liveness check ISO timestamp
     
     @property
     def normalized_key(self) -> str:
@@ -57,6 +59,8 @@ class CanonicalJob:
     source_job_id: str = ""
     first_seen_at: Optional[datetime] = None
     last_seen_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    last_verified_at: Optional[datetime] = None
     is_active: bool = True
     
     # Enrichment fields (Phase 4)

@@ -87,7 +87,7 @@ def fetch_single_lever_board(slug: str, display_name: str) -> List[RawJob]:
                 city=city,
                 job_type=job_type,
                 apply_url=apply_url,
-                description=full_desc[:4000],
+                description=full_desc[:8000],
                 source_name="lever",
                 source_job_id=source_job_id,
                 posted_date=posted_date

@@ -16,10 +16,12 @@ CREATE TABLE IF NOT EXISTS jobs (
     source_job_id VARCHAR(255),
     first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ,
+    last_verified_at TIMESTAMPTZ,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     
     -- LLM enrichment fields (populated in Phase 4)
-    role_tag VARCHAR(50) DEFAULT 'Other', -- SDE, Data/ML, Design, Marketing, Sales, Ops, Finance, HR, Other
+    role_tag VARCHAR(50) DEFAULT 'Other', -- SDE, Data/ML, Hardware, Design, Marketing, Sales, Ops, Finance, HR, Other
     is_fresher_friendly BOOLEAN DEFAULT TRUE,
     min_exp INTEGER DEFAULT 0,
     max_exp INTEGER DEFAULT 1,

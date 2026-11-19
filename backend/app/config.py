@@ -66,6 +66,7 @@ def get_database_url() -> str:
 CANONICAL_ROLES = [
     "SDE",
     "Data/ML",
+    "Hardware",
     "Design",
     "Marketing",
     "Sales",
