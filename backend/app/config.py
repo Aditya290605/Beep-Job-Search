@@ -52,15 +52,20 @@ INSTANCE_CONNECTION_NAME = os.environ.get("INSTANCE_CONNECTION_NAME")  # e.g., p
 
 def get_database_url() -> str:
     """Returns database connection URL or constructs one from Cloud SQL / local variables."""
+    from urllib.parse import quote_plus
     if DATABASE_URL:
         return DATABASE_URL
     if INSTANCE_CONNECTION_NAME:
         # Cloud Run connects to Cloud SQL via Unix socket
-        return f"postgresql://{DB_USER}:{DB_PASSWORD}@/{DB_NAME}?host=/cloudsql/{INSTANCE_CONNECTION_NAME}"
+        u = quote_plus(DB_USER)
+        p = quote_plus(DB_PASSWORD)
+        return f"postgresql://{u}:{p}@/{DB_NAME}?host=/cloudsql/{INSTANCE_CONNECTION_NAME}"
     sqlite_candidate = os.environ.get("SQLITE_PATH", "jobs.db")
     if os.path.exists(sqlite_candidate) or os.path.exists(os.path.join(os.path.dirname(__file__), "..", "..", sqlite_candidate)):
         return f"sqlite:///{sqlite_candidate}"
-    return f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    u = quote_plus(DB_USER)
+    p = quote_plus(DB_PASSWORD)
+    return f"postgresql://{u}:{p}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # --- Canonical Taxonomies ---
 CANONICAL_ROLES = [
