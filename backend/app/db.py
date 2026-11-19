@@ -91,8 +91,16 @@ class Database:
             cur = conn.cursor()
             if self.is_sqlite:
                 cur.executescript(ddl)
+                # Auto-migrate expiry/verification columns on existing SQLite DBs
+                existing_cols = {r[1] for r in cur.execute("PRAGMA table_info(jobs)").fetchall()}
+                if "expires_at" not in existing_cols:
+                    cur.execute("ALTER TABLE jobs ADD COLUMN expires_at TIMESTAMP")
+                if "last_verified_at" not in existing_cols:
+                    cur.execute("ALTER TABLE jobs ADD COLUMN last_verified_at TIMESTAMP")
             else:
                 cur.execute(ddl)
+                cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ")
+                cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMPTZ")
             conn.commit()
             logger.info("Database initialized successfully.")
         finally:
@@ -231,27 +239,47 @@ class Database:
             for job in jobs:
                 norm_key = job.normalized_key
 
-                # 1. Level 1: Exact match on normalized_key
+                # 1. Level 1: Exact match on normalized_key OR exact apply_url
                 if self.is_sqlite:
-                    cur.execute("SELECT id FROM jobs WHERE normalized_key = ?", (norm_key,))
+                    cur.execute("SELECT id, length(COALESCE(description, '')) FROM jobs WHERE normalized_key = ? OR apply_url = ? LIMIT 1", (norm_key, job.apply_url))
                     existing = cur.fetchone()
                 else:
-                    cur.execute("SELECT id FROM jobs WHERE normalized_key = %s", (norm_key,))
+                    cur.execute("SELECT id, length(COALESCE(description, '')) FROM jobs WHERE normalized_key = %s OR apply_url = %s LIMIT 1", (norm_key, job.apply_url))
                     existing = cur.fetchone()
 
                 existing_job_id = None
+                existing_desc_len = 0
                 if existing:
                     existing_job_id = existing[0] if isinstance(existing, tuple) else existing["id"]
+                    existing_desc_len = existing[1] if isinstance(existing, tuple) else existing[1]
                 else:
                     # 2. Level 2: Fuzzy near-duplicate match (rapidfuzz / difflib)
                     fuzzy_match_id = dedupe_index.find_duplicate(job)
                     if fuzzy_match_id:
                         existing_job_id = fuzzy_match_id
 
+                now_str = datetime.now(timezone.utc).isoformat()
                 if existing_job_id:
                     duplicates_skipped += 1
-                    # Link duplicate source URL to canonical job
+                    # Refresh last_seen_at / expires_at / last_verified_at (and upgrade stub description if real JD arrived)
                     if self.is_sqlite:
+                        if job.description and len(job.description) > max(existing_desc_len, 250):
+                            # If upgrading a short stub to a real full JD, reset tagged_at so Gemini re-evaluates with full JD
+                            if existing_desc_len < 250:
+                                cur.execute(
+                                    "UPDATE jobs SET last_seen_at = ?, last_verified_at = COALESCE(?, last_verified_at), expires_at = COALESCE(?, expires_at), description = ?, tagged_at = NULL WHERE id = ?",
+                                    (now_str, job.last_verified_at or now_str, job.expires_at, job.description, existing_job_id)
+                                )
+                            else:
+                                cur.execute(
+                                    "UPDATE jobs SET last_seen_at = ?, last_verified_at = COALESCE(?, last_verified_at), expires_at = COALESCE(?, expires_at), description = ? WHERE id = ?",
+                                    (now_str, job.last_verified_at or now_str, job.expires_at, job.description, existing_job_id)
+                                )
+                        else:
+                            cur.execute(
+                                "UPDATE jobs SET last_seen_at = ?, last_verified_at = COALESCE(?, last_verified_at), expires_at = COALESCE(?, expires_at) WHERE id = ?",
+                                (now_str, job.last_verified_at or now_str, job.expires_at, existing_job_id)
+                            )
                         cur.execute(
                             """
                             INSERT OR IGNORE INTO job_sources (job_id, source_name, source_job_id, url)
@@ -260,6 +288,10 @@ class Database:
                             (existing_job_id, job.source_name, job.source_job_id, job.apply_url)
                         )
                     else:
+                        cur.execute(
+                            "UPDATE jobs SET last_seen_at = NOW(), last_verified_at = COALESCE(%s, NOW()), expires_at = COALESCE(%s, expires_at) WHERE id = %s",
+                            (job.last_verified_at, job.expires_at, existing_job_id)
+                        )
                         cur.execute(
                             """
                             INSERT INTO job_sources (job_id, source_name, source_job_id, url)
@@ -270,20 +302,21 @@ class Database:
                         )
                 else:
                     # 3. Insert new canonical job
-                    now_str = datetime.now(timezone.utc).isoformat()
                     if self.is_sqlite:
                         cur.execute(
                             """
                             INSERT INTO jobs (
                                 normalized_key, title, company, location_raw, city,
                                 job_type, posted_date, apply_url, description,
-                                source_name, source_job_id, first_seen_at, last_seen_at, is_active
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                                source_name, source_job_id, first_seen_at, last_seen_at,
+                                expires_at, last_verified_at, is_active
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                             """,
                             (
                                 norm_key, job.title, job.company, job.location_raw, job.city,
                                 job.job_type, job.posted_date or now_str, job.apply_url, job.description,
-                                job.source_name, job.source_job_id, now_str, now_str
+                                job.source_name, job.source_job_id, now_str, now_str,
+                                job.expires_at, job.last_verified_at or now_str
                             )
                         )
                         job_id = cur.lastrowid
@@ -300,14 +333,15 @@ class Database:
                             INSERT INTO jobs (
                                 normalized_key, title, company, location_raw, city,
                                 job_type, posted_date, apply_url, description,
-                                source_name, source_job_id, first_seen_at, last_seen_at, is_active
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), TRUE)
+                                source_name, source_job_id, first_seen_at, last_seen_at,
+                                expires_at, last_verified_at, is_active
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, COALESCE(%s, NOW()), TRUE)
                             RETURNING id
                             """,
                             (
                                 norm_key, job.title, job.company, job.location_raw, job.city,
                                 job.job_type, job.posted_date, job.apply_url, job.description,
-                                job.source_name, job.source_job_id
+                                job.source_name, job.source_job_id, job.expires_at, job.last_verified_at
                             )
                         )
                         job_id = cur.fetchone()[0]
@@ -422,6 +456,28 @@ class Database:
                     (run_id, model_name, posts_count, in_tokens, out_tokens, cost_usd)
                 )
             conn.commit()
+        finally:
+            if not self._sqlite_mem_conn:
+                conn.close()
+
+    def deactivate_expired_jobs(self) -> int:
+        """Marks any active job whose expires_at timestamp is in the past as inactive."""
+        conn = self.get_connection()
+        try:
+            cur = conn.cursor()
+            if self.is_sqlite:
+                now_str = datetime.now(timezone.utc).isoformat()
+                cur.execute(
+                    "UPDATE jobs SET is_active = 0 WHERE is_active = 1 AND expires_at IS NOT NULL AND expires_at != '' AND expires_at < ?",
+                    (now_str,)
+                )
+            else:
+                cur.execute(
+                    "UPDATE jobs SET is_active = FALSE WHERE is_active = TRUE AND expires_at IS NOT NULL AND expires_at < NOW()"
+                )
+            count = cur.rowcount or 0
+            conn.commit()
+            return count
         finally:
             if not self._sqlite_mem_conn:
                 conn.close()

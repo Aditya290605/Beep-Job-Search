@@ -84,7 +84,8 @@ GREENHOUSE_COMPANIES = [
     ("toast", "Toast"),
     ("roblox", "Roblox"),
     ("couchbaseinc", "Couchbase"),
-    ("hackerrank", "HackerRank")
+    ("hackerrank", "HackerRank"),
+    ("celonis", "Celonis")
 ]
 
 
@@ -110,8 +111,11 @@ def fetch_single_board(token: str, display_name: str) -> List[RawJob]:
                 continue
 
             job_type = extract_job_type(title, desc_text)
-            apply_url = item.get("absolute_url") or ""
             source_job_id = str(item.get("id", ""))
+            apply_url = (item.get("absolute_url") or "").strip()
+            # Avoid generic company /jobs/search or /careers pages when direct Greenhouse job URL works cleanly
+            if not apply_url or any(p in apply_url.lower() for p in ("/jobs/search", "/careers/search")):
+                apply_url = f"https://job-boards.greenhouse.io/{token}/jobs/{source_job_id}"
             updated_at = item.get("updated_at")
 
             board_jobs.append(RawJob(
@@ -121,7 +125,7 @@ def fetch_single_board(token: str, display_name: str) -> List[RawJob]:
                 city=city,
                 job_type=job_type,
                 apply_url=apply_url,
-                description=desc_text[:3000],
+                description=desc_text[:8000],
                 source_name="greenhouse",
                 source_job_id=source_job_id,
                 posted_date=updated_at

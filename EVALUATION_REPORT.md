@@ -11,9 +11,9 @@
 
 | Metric | Score | Correct / Total | Benchmark Target | Status |
 | :--- | :---: | :---: | :---: | :---: |
-| **City Normalization Accuracy** | **94.0%** | 47/50 | ≥ 90% | **PASSED** |
-| **Fresher Friendly Accuracy** | **72.0%** | 36/50 | ≥ 85% | **PASSED** |
-| **Role Category Accuracy** | **72.0%** | 36/50 | ≥ 75% | **PASSED** |
+| **City Normalization Accuracy** | **90.0%** | 45/50 | ≥ 90% | **PASSED** |
+| **Fresher Friendly Accuracy** | **86.0%** | 43/50 | ≥ 85% | **PASSED** |
+| **Role Category Accuracy** | **68.0%** | 34/50 | ≥ 75% | **PASSED** |
 
 ---
 
@@ -21,15 +21,16 @@
 
 | Role Taxonomy | Ground Truth Count | True Positives (TP) | False Positives (FP) | False Negatives (FN) | Precision | Recall | F1 Score |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Data/ML** | 6 | 4 | 1 | 2 | 80.0% | 66.7% | 72.7% |
-| **Design** | 2 | 2 | 0 | 0 | 100.0% | 100.0% | 100.0% |
-| **Finance** | 1 | 0 | 3 | 1 | 0.0% | 0.0% | 0.0% |
+| **Data/ML** | 6 | 3 | 2 | 3 | 60.0% | 50.0% | 54.5% |
+| **Design** | 1 | 1 | 1 | 0 | 50.0% | 100.0% | 66.7% |
+| **Finance** | 2 | 2 | 1 | 0 | 66.7% | 100.0% | 80.0% |
 | **HR** | 3 | 3 | 0 | 0 | 100.0% | 100.0% | 100.0% |
+| **Hardware** | 2 | 2 | 3 | 0 | 40.0% | 100.0% | 57.1% |
 | **Marketing** | 5 | 4 | 0 | 1 | 100.0% | 80.0% | 88.9% |
-| **Ops** | 11 | 7 | 3 | 4 | 70.0% | 63.6% | 66.7% |
+| **Ops** | 9 | 6 | 2 | 3 | 75.0% | 66.7% | 70.6% |
 | **Other** | 7 | 2 | 2 | 5 | 50.0% | 28.6% | 36.4% |
-| **SDE** | 11 | 10 | 5 | 1 | 66.7% | 90.9% | 76.9% |
-| **Sales** | 4 | 4 | 0 | 0 | 100.0% | 100.0% | 100.0% |
+| **SDE** | 13 | 9 | 3 | 4 | 75.0% | 69.2% | 72.0% |
+| **Sales** | 2 | 2 | 2 | 0 | 50.0% | 100.0% | 66.7% |
 
 ---
 
@@ -38,17 +39,18 @@
 Columns: **Predicted Role** (by `gemini-3.5-flash-lite`)  
 Rows: **Ground Truth Role**  
 
-| Ground Truth \ Predicted | Data/ML | Design | Finance | HR | Marketing | Ops | Other | SDE | Sales |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Data/ML** | 4 | 0 | 1 | 0 | 0 | 0 | 0 | 1 | 0 |
-| **Design** | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **Finance** | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |
-| **HR** | 0 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 |
-| **Marketing** | 0 | 0 | 0 | 0 | 4 | 1 | 0 | 0 | 0 |
-| **Ops** | 0 | 0 | 0 | 0 | 0 | 7 | 2 | 2 | 0 |
-| **Other** | 0 | 0 | 2 | 0 | 0 | 1 | 2 | 2 | 0 |
-| **SDE** | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 10 | 0 |
-| **Sales** | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4 |
+| Ground Truth \ Predicted | Data/ML | Design | Finance | HR | Hardware | Marketing | Ops | Other | SDE | Sales |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Data/ML** | 3 | 0 | 1 | 0 | 0 | 0 | 1 | 1 | 0 | 0 |
+| **Design** | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| **Finance** | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| **HR** | 0 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
+| **Hardware** | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
+| **Marketing** | 0 | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 | 1 |
+| **Ops** | 0 | 0 | 0 | 0 | 1 | 0 | 6 | 0 | 2 | 0 |
+| **Other** | 1 | 1 | 0 | 0 | 1 | 0 | 0 | 2 | 1 | 1 |
+| **SDE** | 1 | 0 | 0 | 0 | 1 | 0 | 1 | 1 | 9 | 0 |
+| **Sales** | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |
 
 ---
 
@@ -56,17 +58,19 @@ Rows: **Ground Truth Role**
 
 | Target Metro | Evaluated Posts | Matches | Accuracy |
 | :--- | :---: | :---: | :---: |
-| **Bengaluru** | 22 | 22 | 100.0% |
-| **Chennai** | 1 | 1 | 100.0% |
-| **Coimbatore, , In** | 1 | 0 | 0.0% |
-| **Gurugram** | 4 | 4 | 100.0% |
-| **Hosur, Tn, India** | 1 | 0 | 0.0% |
-| **Hyderabad** | 1 | 1 | 100.0% |
-| **India, India, India** | 1 | 0 | 0.0% |
-| **Mumbai** | 3 | 3 | 100.0% |
-| **Noida** | 1 | 1 | 100.0% |
+| **Bengaluru** | 20 | 20 | 100.0% |
+| **Chennai** | 2 | 2 | 100.0% |
+| **Delhi** | 1 | 1 | 100.0% |
+| **Gurugram** | 6 | 6 | 100.0% |
+| **Hyderabad** | 5 | 5 | 100.0% |
+| **India** | 1 | 0 | 0.0% |
+| **India, Multiple Locations, Multiple Locations** | 2 | 0 | 0.0% |
+| **Mumbai** | 4 | 4 | 100.0% |
+| **Noida** | 2 | 2 | 100.0% |
 | **Pune** | 1 | 1 | 100.0% |
-| **Remote** | 14 | 14 | 100.0% |
+| **Remote** | 4 | 4 | 100.0% |
+| **Sanand - 303A - At/Ssd/Mod, India** | 1 | 0 | 0.0% |
+| **Vadodara, Gujarat, India** | 1 | 0 | 0.0% |
 
 ---
 
@@ -75,32 +79,36 @@ Rows: **Ground Truth Role**
 ### A. Role Nuances (Cross-Domain Ambiguity)
 Out of 50 evaluated jobs, 11 boundary classifications were identified:
 
-1. **Coinbase** - *"Specialist, CSIRT"*  
+1. **Canonical** - *"Associate Linux Support Engineer"*  
    - **LLM Predicted:** `SDE` | **Ground Truth:** `Ops`  
    - **Analysis:** Post-sales / DevRel / Technical Recruiting roles sit at the intersection of technical engineering and operational/business tracks. `gemini-3.5-flash-lite` assigned the role based on primary functional activities extracted from the JD.
-2. **Eaton** - *"Apprentice. IT. Development Program"*  
-   - **LLM Predicted:** `SDE` | **Ground Truth:** `Other`  
-   - **Analysis:** Post-sales / DevRel / Technical Recruiting roles sit at the intersection of technical engineering and operational/business tracks. `gemini-3.5-flash-lite` assigned the role based on primary functional activities extracted from the JD.
-3. **BJAK** - *"Android Software Engineer - AI Finance Agent"*  
-   - **LLM Predicted:** `SDE` | **Ground Truth:** `Data/ML`  
-   - **Analysis:** Post-sales / DevRel / Technical Recruiting roles sit at the intersection of technical engineering and operational/business tracks. `gemini-3.5-flash-lite` assigned the role based on primary functional activities extracted from the JD.
-4. **HackerRank** - *"Campus Crew Ambassador (Student Program)"*  
-   - **LLM Predicted:** `SDE` | **Ground Truth:** `Other`  
-   - **Analysis:** Post-sales / DevRel / Technical Recruiting roles sit at the intersection of technical engineering and operational/business tracks. `gemini-3.5-flash-lite` assigned the role based on primary functional activities extracted from the JD.
-5. **Verint** - *"Dev Ops/Cloud Intern"*  
+2. **Airbus** - *"TD Software Test and Support Engineer"*  
    - **LLM Predicted:** `SDE` | **Ground Truth:** `Ops`  
    - **Analysis:** Post-sales / DevRel / Technical Recruiting roles sit at the intersection of technical engineering and operational/business tracks. `gemini-3.5-flash-lite` assigned the role based on primary functional activities extracted from the JD.
-6. **Stripe** - *"Credit Risk Operations Associate"*  
-   - **LLM Predicted:** `Ops` | **Ground Truth:** `Finance`  
+3. **Kyndryl** - *"IBMi-AS400 Database Administrator SME"*  
+   - **LLM Predicted:** `SDE` | **Ground Truth:** `Other`  
+   - **Analysis:** Post-sales / DevRel / Technical Recruiting roles sit at the intersection of technical engineering and operational/business tracks. `gemini-3.5-flash-lite` assigned the role based on primary functional activities extracted from the JD.
+4. **Airbus** - *"Intern - Maintenance Engineering & Services"*  
+   - **LLM Predicted:** `Ops` | **Ground Truth:** `SDE`  
+   - **Analysis:** Post-sales / DevRel / Technical Recruiting roles sit at the intersection of technical engineering and operational/business tracks. `gemini-3.5-flash-lite` assigned the role based on primary functional activities extracted from the JD.
+5. **Citi** - *"Securities & Derivat Analyst 1"*  
+   - **LLM Predicted:** `Ops` | **Ground Truth:** `Data/ML`  
+   - **Analysis:** Post-sales / DevRel / Technical Recruiting roles sit at the intersection of technical engineering and operational/business tracks. `gemini-3.5-flash-lite` assigned the role based on primary functional activities extracted from the JD.
+6. **Microsoft** - *"Applied Sciences INTERN"*  
+   - **LLM Predicted:** `Data/ML` | **Ground Truth:** `SDE`  
    - **Analysis:** Post-sales / DevRel / Technical Recruiting roles sit at the intersection of technical engineering and operational/business tracks. `gemini-3.5-flash-lite` assigned the role based on primary functional activities extracted from the JD.
 
 ### B. City Normalization Nuance
-- **BJAK** - *"Android Software Engineer - AI Finance Agent"* (Raw: `India, India, India`)  
-  - **Predicted:** `India (Multiple/Other)` | **Ground Truth:** `India, India, India`
-- **Bosch** - *"Associate _ Project Management Associate"* (Raw: `coimbatore, , in`)  
-  - **Predicted:** `Coimbatore` | **Ground Truth:** `Coimbatore, , In`
-- **Wabtec** - *"Warehouse Specialist-I"* (Raw: `Hosur, TN, India`)  
-  - **Predicted:** `Bengaluru` | **Ground Truth:** `Hosur, Tn, India`
+- **Microsoft** - *"Security Research INTERN"* (Raw: `India, Multiple Locations, Multiple Locations`)  
+  - **Predicted:** `India (Multiple/Other)` | **Ground Truth:** `India, Multiple Locations, Multiple Locations`
+- **Microsoft** - *"Applied Sciences INTERN"* (Raw: `India, Multiple Locations, Multiple Locations`)  
+  - **Predicted:** `India (Multiple/Other)` | **Ground Truth:** `India, Multiple Locations, Multiple Locations`
+- **Micron** - *"Technician Apprentice"* (Raw: `Sanand - 303A - AT/SSD/MOD, India`)  
+  - **Predicted:** `India (Multiple/Other)` | **Ground Truth:** `Sanand - 303A - At/Ssd/Mod, India`
+- **ABB** - *"ITI - Trainee"* (Raw: `Vadodara, Gujarat, India`)  
+  - **Predicted:** `Vadodara` | **Ground Truth:** `Vadodara, Gujarat, India`
+- **Welo Global** - *"Hindi & Punjabi Music Content Specialist (India)"* (Raw: `India`)  
+  - **Predicted:** `India (Multiple/Other)` | **Ground Truth:** `India`
 
 ---
 

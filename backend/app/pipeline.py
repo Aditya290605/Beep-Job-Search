@@ -25,6 +25,7 @@ from app.adapters.greenhouse import fetch_greenhouse_jobs
 from app.adapters.lever import fetch_lever_jobs
 from app.adapters.ashby import fetch_ashby_jobs
 from app.adapters.smartrecruiters import fetch_smartrecruiters_jobs
+from app.adapters.workday import fetch_workday_jobs
 from app.adapters.jobicy import fetch_jobicy_jobs
 from app.adapters.remotive import fetch_remotive_jobs
 from app.adapters.github_jobs import fetch_github_fresher_jobs
@@ -52,12 +53,18 @@ def run_pipeline(db: Database = None) -> PipelineRunStats:
     run_id = db.start_pipeline_run()
     logger.info(f"--- Starting Pipeline Run #{run_id} ---")
 
+    # Expire any postings whose apply deadline has passed before fetching new ones
+    expired_cnt = db.deactivate_expired_jobs()
+    if expired_cnt:
+        logger.info(f"Deactivated {expired_cnt} expired job postings past their apply deadline.")
+
     stats = PipelineRunStats(started_at=datetime.now(timezone.utc))
     adapters = [
         ("greenhouse", fetch_greenhouse_jobs),
         ("lever", fetch_lever_jobs),
         ("ashby", fetch_ashby_jobs),
         ("smartrecruiters", fetch_smartrecruiters_jobs),
+        ("workday", fetch_workday_jobs),
         ("jobicy", fetch_jobicy_jobs),
         ("remotive", fetch_remotive_jobs),
         ("github_feeds", fetch_github_fresher_jobs)

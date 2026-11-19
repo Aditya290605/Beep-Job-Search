@@ -164,6 +164,42 @@ class TestDatabaseEnrichmentAndCostLogging(unittest.TestCase):
         self.assertEqual(row["is_active"], 0, "Jobs with Unknown city must be deactivated")
         conn.close()
 
+    def test_spelled_out_senior_exp_and_hardware_and_expiry_and_url_dedupe(self):
+        from app.adapters.base import is_fresher_job, clean_html
+        from app.api.queries import search_jobs
+
+        # 1. Spelled-out senior years ("Five or more years") rejected
+        self.assertFalse(is_fresher_job(
+            "Identity Security Engineer",
+            "WHAT'S REQUIRED: Five or more years in security engineering, with at least three years in IAM."
+        ))
+
+        # 2. Double-escaped HTML cleaned properly
+        self.assertEqual(clean_html("&lt;p&gt;Hello &amp;amp; World&lt;/p&gt;"), "Hello & World")
+
+        # 3. Hardware job classified as Hardware (NOT SDE) with no fake DSA padding
+        hw = heuristic_fallback_tagger([{
+            "id": 99,
+            "title": "Hardware Design Engineer Intern",
+            "description": "PCB Design, Motherboard Architecture, Verilog, SPICE, Oscilloscope, I2C, SPI"
+        }])[0]
+        self.assertEqual(hw["role"], "Hardware")
+        self.assertIn("PCB Design", hw["skills"])
+        self.assertNotIn("Data Structures", hw["skills"])
+
+        # 4. Exact URL deduplication across slightly different company names
+        j1 = RawJob(title="Analyst", company="AQR Capital", location_raw="Bangalore", city="Bangalore", job_type="job", apply_url="https://example.com/same-job", description="Fresher role", source_name="gh", source_job_id="1")
+        j2 = RawJob(title="Analyst", company="AQR Capital Management", location_raw="Bangalore", city="Bangalore", job_type="job", apply_url="https://example.com/same-job", description="Fresher role", source_name="git", source_job_id="2")
+        ins, dupes = self.db.insert_jobs([j1, j2])
+        self.assertEqual(ins, 1)
+        self.assertEqual(dupes, 1)
+
+        # 5. Expired job automatically deactivated on load
+        j_exp = RawJob(title="Old Intern", company="Acme", location_raw="Pune", city="Pune", job_type="internship", apply_url="https://example.com/old", description="Intern", source_name="wd", source_job_id="3", expires_at="2020-01-01T00:00:00+00:00")
+        self.db.insert_jobs([j_exp])
+        res = search_jobs(self.db, q="Old Intern")
+        self.assertEqual(res["total"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

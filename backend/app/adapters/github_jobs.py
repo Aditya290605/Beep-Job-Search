@@ -10,7 +10,7 @@ Connects directly to raw markdown tables and extracts verified company career li
 import re
 import json
 import logging
-from typing import List
+from typing import List, Optional
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import urllib.request
@@ -21,12 +21,14 @@ from app.adapters.base import (
     is_fresher_job,
     extract_job_type,
     fetch_json,
-    SENIOR_REGEX
+    SENIOR_REGEX,
+    SENIOR_EXP_REGEX
 )
+from app.verifier import verify_and_hydrate
 
 logger = logging.getLogger(__name__)
 
-# Verified curated community repositories syncing directly with company ATS portals
+# Verified live curated community repositories syncing directly with company ATS portals
 GITHUB_FEEDS = [
     {
         "name": "India-Tech-Internships-Live-JSON",
@@ -34,24 +36,9 @@ GITHUB_FEEDS = [
         "format": "json"
     },
     {
-        "name": "Summer-2025-Internship-List",
-        "url": "https://raw.githubusercontent.com/arunike/Summer-2025-Internship-List/main/README.md",
+        "name": "India-Tech-Internships-Tracker",
+        "url": "https://raw.githubusercontent.com/Sarthzk/internship-tracker/main/README.md",
         "format": "markdown"
-    },
-    {
-        "name": "cvrve-Summer-2025-JSON",
-        "url": "https://raw.githubusercontent.com/cvrve/Summer2025-Internships/dev/.github/scripts/listings.json",
-        "format": "json"
-    },
-    {
-        "name": "SimplifyJobs-Summer-Live-JSON",
-        "url": "https://raw.githubusercontent.com/SimplifyJobs/Summer2025-Internships/dev/.github/scripts/listings.json",
-        "format": "json"
-    },
-    {
-        "name": "SimplifyJobs-Summer-2024-JSON",
-        "url": "https://raw.githubusercontent.com/SimplifyJobs/Summer2024-Internships/dev/.github/scripts/listings.json",
-        "format": "json"
     },
     {
         "name": "SimplifyJobs-NewGrad-Live-JSON",
@@ -59,9 +46,9 @@ GITHUB_FEEDS = [
         "format": "json"
     },
     {
-        "name": "India-Tech-Internships-Tracker",
-        "url": "https://raw.githubusercontent.com/Sarthzk/internship-tracker/main/README.md",
-        "format": "markdown"
+        "name": "SimplifyJobs-Summer-Live-JSON",
+        "url": "https://raw.githubusercontent.com/SimplifyJobs/Summer2025-Internships/dev/.github/scripts/listings.json",
+        "format": "json"
     },
     {
         "name": "New-Grad-Jobs",
@@ -71,11 +58,6 @@ GITHUB_FEEDS = [
     {
         "name": "SWE-College-Jobs-2026",
         "url": "https://raw.githubusercontent.com/speedyapply/2026-SWE-College-Jobs/main/README.md",
-        "format": "markdown"
-    },
-    {
-        "name": "SWE-College-Jobs-2025",
-        "url": "https://raw.githubusercontent.com/speedyapply/2025-SWE-College-Jobs/main/README.md",
         "format": "markdown"
     }
 ]
@@ -157,7 +139,7 @@ def fetch_single_feed(feed: dict) -> List[RawJob]:
                 if not apply_url or not apply_url.startswith("http"):
                     continue
 
-                valid_loc, city = is_india_location(location_raw)
+                valid_loc, city = is_india_location(location_raw, allow_bare_remote=False)
                 if not valid_loc or city == "Unknown":
                     continue
 
@@ -222,13 +204,13 @@ def fetch_single_feed(feed: dict) -> List[RawJob]:
             if company.lower() in ("company", "name", "organization") or title.lower() in ("role", "position", "job title"):
                 continue
 
-            # Filter by location (must be India, drop Unknown)
-            valid_loc, city = is_india_location(location_raw)
+            # Filter by location (must explicitly be India / APAC / Worldwide, never bare US "Remote")
+            valid_loc, city = is_india_location(location_raw, allow_bare_remote=False)
             if not valid_loc or city == "Unknown":
                 # Check if location was in cell 3 instead
                 if len(cells) > 3:
                     alt_loc = clean_markdown_cell(cells[3])
-                    valid_loc, city = is_india_location(alt_loc)
+                    valid_loc, city = is_india_location(alt_loc, allow_bare_remote=False)
                     if valid_loc and city != "Unknown":
                         location_raw = alt_loc
                     else:
@@ -264,17 +246,67 @@ def fetch_single_feed(feed: dict) -> List[RawJob]:
     return feed_jobs
 
 
+def _hydrate_candidate(job: RawJob) -> Optional[RawJob]:
+    """Hydrates real full JD, verifies open status, and rejects senior/closed/non-India postings."""
+    vr = verify_and_hydrate(job.apply_url, source_name=job.source_name, source_job_id=job.source_job_id, timeout=7)
+    if not vr.is_open:
+        logger.debug(f"Dropped closed GitHub feed job ({vr.reason}): {job.company} - {job.title}")
+        return None
+    if vr.location_raw:
+        valid_loc, real_city = is_india_location(vr.location_raw, allow_bare_remote=False)
+        if not valid_loc or real_city == "Unknown":
+            logger.debug(f"Dropped non-India hydrated job ({vr.location_raw}): {job.company} - {job.title}")
+            return None
+        job.location_raw = vr.location_raw
+        job.city = real_city
+    if vr.description:
+        # Reject any job whose real JD requires 2+ years of experience (digits or spelled-out words)
+        if SENIOR_EXP_REGEX.search(vr.description):
+            logger.debug(f"Dropped senior JD job (2+ yrs exp): {job.company} - {job.title}")
+            return None
+        job.description = vr.description
+    if vr.apply_url:
+        job.apply_url = vr.apply_url
+    if vr.posted_date:
+        job.posted_date = vr.posted_date
+    job.expires_at = vr.expires_at
+    job.last_verified_at = vr.verified_at
+    return job
+
+
 def fetch_github_fresher_jobs() -> List[RawJob]:
-    """Fetches and normalizes fresher jobs from open GitHub aggregators concurrently."""
-    results: List[RawJob] = []
+    """Fetches, deduplicates, hydrates real JDs, and live-verifies fresher jobs from GitHub aggregators."""
+    raw_results: List[RawJob] = []
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         futures = [executor.submit(fetch_single_feed, feed) for feed in GITHUB_FEEDS]
         for f in as_completed(futures):
             try:
-                results.extend(f.result())
+                raw_results.extend(f.result())
             except Exception:
                 pass
 
-    logger.info(f"GitHub fresher feed adapter collected {len(results)} fresher jobs")
-    return results
+    # Deduplicate by normalized_key and apply_url BEFORE network hydration
+    seen_keys = set()
+    seen_urls = set()
+    unique_candidates: List[RawJob] = []
+    for job in raw_results:
+        if job.normalized_key in seen_keys or job.apply_url in seen_urls:
+            continue
+        seen_keys.add(job.normalized_key)
+        seen_urls.add(job.apply_url)
+        unique_candidates.append(job)
+
+    verified_results: List[RawJob] = []
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        futures = [executor.submit(_hydrate_candidate, job) for job in unique_candidates]
+        for f in as_completed(futures):
+            try:
+                hydrated = f.result()
+                if hydrated is not None:
+                    verified_results.append(hydrated)
+            except Exception:
+                pass
+
+    logger.info(f"GitHub fresher feed adapter collected {len(verified_results)} live-verified fresher jobs (from {len(unique_candidates)} unique candidates)")
+    return verified_results

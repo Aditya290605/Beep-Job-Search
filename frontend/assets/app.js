@@ -60,6 +60,7 @@
     lever: "Lever ATS",
     ashby: "Ashby ATS",
     smartrecruiters: "SmartRecruiters",
+    workday: "Workday ATS",
     jobicy: "Jobicy API",
     remotive: "Remotive API",
     github_feeds: "Verified Career Tracker",
@@ -235,7 +236,11 @@
   }
 
   // ---------- Data Layer ----------
-  const mockJobs = () => (window.MOCK && window.MOCK.jobs) || [];
+  const mockJobs = () => {
+    const raw = (window.MOCK && window.MOCK.jobs) || window.__MOCK_JOBS__ || [];
+    const now = Date.now();
+    return raw.filter((j) => !j.expires_at || Date.parse(j.expires_at) > now);
+  };
 
   function mockFilter(s) {
     const q = s.q.trim().toLowerCase();
@@ -539,20 +544,31 @@
   // ---------- Render: Right-Hand Job Detail Panel ----------
   function formatDescriptionHtml(j) {
     const raw = (j.description || "").trim();
-    const roleName = j.role_tag && j.role_tag !== "Other" ? j.role_tag : "Early Career Engineering & Operations";
-    const cityText = j.city === "Remote" ? "Remote (India)" : j.city;
-    const skills = (j.skills && j.skills.length ? j.skills : ["Problem Solving", "Communication", "Analytical Thinking"]).join(", ");
+    if (!raw) {
+      return `<p>Full job description is hosted on <strong>${esc(j.company)}</strong>&rsquo;s official career portal. Click <strong>Apply Now</strong> to view complete requirements.</p>`;
+    }
 
-    if (raw.length < 220) {
-      return `
-        <p><strong>${esc(j.company)}</strong> is inviting applications for <strong>${esc(j.title)}</strong> based in <strong>${esc(cityText)}</strong>. This opening is structured for final-year students, recent graduates, and early-career candidates with 0 to 1 years of experience.</p>
-        <p>You will work alongside experienced mentors across the ${esc(roleName)} team to build, ship, and maintain production systems while developing core domain expertise.</p>
-        <ul>
-          <li>Collaborate with cross-functional engineering, product, and operations stakeholders on live deliverables.</li>
-          <li>Apply strong fundamentals in <strong>${esc(skills)}</strong> to solve customer and platform problems.</li>
-          <li>Participate in code/design reviews, documentation, and structured onboarding sprints.</li>
-          <li>Eligibility: 0–1 years of experience (2025 / 2026 / recent graduates eligible).</li>
-        </ul>`;
+    // Preserve structured paragraphs and bullet points from real hydrated JDs
+    if (raw.includes("\n")) {
+      const lines = raw.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+      const chunks = [];
+      let bullets = [];
+      const flushBullets = () => {
+        if (bullets.length) {
+          chunks.push(`<ul>${bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>`);
+          bullets = [];
+        }
+      };
+      for (const line of lines) {
+        if (/^[•\-*]\s+/.test(line)) {
+          bullets.push(line.replace(/^[•\-*]\s+/, ""));
+        } else {
+          flushBullets();
+          chunks.push(`<p>${esc(line)}</p>`);
+        }
+      }
+      flushBullets();
+      return chunks.join("");
     }
 
     const sentences = raw.split(/(?<=[.!?])\s+(?=[A-Z0-9])/);
@@ -648,6 +664,8 @@
             <div class="fact"><dt>Job Type</dt><dd>${esc(typeText)}</dd></div>
             <div class="fact"><dt>Location</dt><dd>${esc(j.city === "India (Multiple/Other)" ? "Multiple Cities, India" : j.city)}</dd></div>
             <div class="fact"><dt>Category</dt><dd>${esc(j.role_tag || "Engineering")}</dd></div>
+            ${j.expires_at ? `<div class="fact"><dt>Apply Before</dt><dd>${esc(new Date(j.expires_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }))}</dd></div>` : ""}
+            ${j.last_verified_at ? `<div class="fact"><dt>Link Verified</dt><dd>${esc(relTime(j.last_verified_at))}</dd></div>` : ""}
           </dl>
         </section>
 

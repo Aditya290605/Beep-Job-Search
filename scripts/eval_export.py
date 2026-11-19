@@ -10,9 +10,10 @@ DB_PATH = os.environ.get("SQLITE_PATH", "test_live.db")
 OUTPUT_PATH = "exports/eval_50_sample.csv"
 
 STRATA_TARGETS = {
-    "SDE": 15,
-    "Ops": 10,
+    "SDE": 12,
+    "Ops": 8,
     "Data/ML": 5,
+    "Hardware": 5,
     "Sales": 4,
     "Marketing": 4,
     "HR": 3,
@@ -60,6 +61,10 @@ def normalize_city(c):
 
 def determine_ground_truth_role(title, company, description=""):
     t = title.lower()
+
+    # Hardware / Silicon / VLSI / FPGA / PCB / Embedded Electronics / Aerospace
+    if re.search(r"\b(hardware|silicon|vlsi|fpga|asic|rtl|pcb|motherboard|embedded|firmware|semiconductor|power electronics|circuit|analog|structures|fstd|technician apprentice)\b", t):
+        return "Hardware"
 
     # Data / ML / Analytics / Quant
     if re.search(r"\b(data|machine learning|ml|ai|analyst|analytics|power bi|tableau|quant|bi developer)\b", t):
