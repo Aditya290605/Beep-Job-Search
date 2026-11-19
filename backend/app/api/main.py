@@ -74,11 +74,32 @@ async def add_process_time_header(request: Request, call_next):
 
 @app.get("/healthz")
 def healthz():
-    """Liveness & readiness probe for Cloud Run."""
+    """Liveness, readiness & DB connectivity diagnostic probe for Cloud Run."""
+    db_connected = False
+    active_jobs = 0
+    db_error = None
+    if db:
+        try:
+            conn = db.get_connection()
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) FROM jobs WHERE is_active = 1" if db.is_sqlite else "SELECT COUNT(*) FROM jobs WHERE is_active = TRUE")
+                active_jobs = cur.fetchone()[0]
+                db_connected = True
+            finally:
+                if not db._sqlite_mem_conn:
+                    conn.close()
+        except Exception as e:
+            db_error = str(e)
     return {
-        "status": "ok",
+        "status": "ok" if db_connected else "degraded",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "database": "sqlite" if (db and db.is_sqlite) else "postgres"
+        "database": "sqlite" if (db and db.is_sqlite) else "postgres",
+        "db_connected": db_connected,
+        "active_jobs": active_jobs,
+        "llm_model": config.VERTEX_AI_MODEL,
+        "gemini_key_configured": bool(os.environ.get("GEMINI_API_KEY") or config.GEMINI_API_KEY),
+        "db_error": db_error
     }
 
 

@@ -333,6 +333,7 @@
       const data = await res.json();
       const total = data.total_active_jobs || (data.job_types || []).reduce((acc, t) => acc + t.count, 0);
       if (total === 0 && mockJobs().length > 0) {
+        useMock = true;
         return mockFilterCounts();
       }
       const remCount = ((data.cities || []).find((c) => c.name === "Remote") || {}).count || 0;
