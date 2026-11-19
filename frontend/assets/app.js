@@ -1222,13 +1222,13 @@
     // so 'B' never starts moving before the site has cleanly rendered
     if (!isReplay) {
       await waitForPageAndFonts();
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 100));
     }
 
-    const STAGGER_MS = 680;
-    const FLIGHT_MS = 1100;
+    const STAGGER_MS = 280;
+    const FLIGHT_MS = 550;
     const IMPACT_OFFSET = 0.76;
-    const INITIAL_DELAY_MS = 100;
+    const INITIAL_DELAY_MS = 60;
 
     chars.forEach((ch, idx) => {
       const { rot, yEm } = LETTER_POSE[idx];
@@ -1276,7 +1276,7 @@
         const impactTime = startDelay + FLIGHT_MS * IMPACT_OFFSET;
         for (let prev = idx - 1; prev >= 0; prev--) {
           const distance = idx - prev;
-          const rippleDelay = impactTime + (distance - 1) * 45;
+          const rippleDelay = impactTime + (distance - 1) * 25;
           const intensity = distance === 1 ? 1.0 : distance === 2 ? 0.48 : 0.22;
           introTimers.push(
             setTimeout(() => {
