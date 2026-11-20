@@ -6,12 +6,10 @@ Usage:
   python3 submission/label_helper.py
 
 Features:
-- Fast terminal UI to review each of the 50 sampled posts in ~5 minutes.
-- Shows Title, Company, Raw Location, Description Snippet, and LLM Tag.
-- Press [Enter] to accept LLM tag, or type your own label.
-- Auto-saves after every single row.
-- Resumes where you left off if interrupted.
-- Automatically calculates and prints accuracy when all 50 rows are done!
+- Numbered shortcuts (1-9, 0) for instant role selection.
+- Press [Enter] to accept the LLM's tag, or type a number/correction.
+- Auto-saves after every post. Resumes right where you left off.
+- Automatically calculates accuracy and Wilson 95% confidence intervals when done.
 """
 
 import csv
@@ -19,10 +17,20 @@ import os
 import sys
 import subprocess
 
-VALID_ROLES = [
-    "SDE", "Data/ML", "Hardware", "Design", "Marketing", "Sales", "Ops", "Finance", "HR", "Other"
-]
+ROLES_MAP = {
+    "1": "SDE",
+    "2": "Data/ML",
+    "3": "Hardware",
+    "4": "Design",
+    "5": "Marketing",
+    "6": "Sales",
+    "7": "Ops",
+    "8": "Finance",
+    "9": "HR",
+    "0": "Other",
+}
 
+VALID_ROLES = list(ROLES_MAP.values())
 CSV_PATH = os.path.join(os.path.dirname(__file__), "accuracy_sample_50.csv")
 
 def main():
@@ -38,21 +46,25 @@ def main():
         print("CSV is empty.")
         sys.exit(1)
 
-    print("\n" + "=" * 70)
-    print("   BEEP JOB HUB — 50-POST ACCURACY HAND-LABELING HELPER")
-    print("=" * 70)
-    print("Instructions:")
-    print("  - Press [Enter] to ACCEPT the LLM's tag.")
-    print("  - Or type a custom value (e.g. SDE, Hardware, Ops, Bangalore).")
-    print("  - Type 'q' to quit at any time (progress is saved automatically).")
-    print("Valid Roles:", ", ".join(VALID_ROLES))
-    print("=" * 70 + "\n")
+    print("\n" + "=" * 75)
+    print("      BEEP JOB HUB — 50-POST HAND ACCURACY EVALUATION HELPER")
+    print("=" * 75)
+    print("Shortcuts:")
+    print("  [1] SDE       [2] Data/ML   [3] Hardware  [4] Design    [5] Marketing")
+    print("  [6] Sales     [7] Ops       [8] Finance   [9] HR        [0] Other")
+    print("  [Enter]       Accept LLM guess")
+    print("  'q'           Save and exit anytime")
+    print("=" * 75 + "\n")
+
+    filled_count = sum(1 for r in reader if (r.get("my_correct_role") or "").strip() and (r.get("my_correct_city") or "").strip())
+    if filled_count > 0:
+        print(f"Resuming: {filled_count} of {len(reader)} posts already labeled.\n")
 
     for i, row in enumerate(reader, 1):
         existing_role = (row.get("my_correct_role") or "").strip()
         existing_city = (row.get("my_correct_city") or "").strip()
 
-        # If already filled, skip unless user asks to re-review
+        # If already filled, skip
         if existing_role and existing_city:
             continue
 
@@ -61,52 +73,54 @@ def main():
         raw_loc = row.get("raw_location", "")
         llm_role = row.get("llm_role", "")
         llm_city = row.get("llm_city", "")
-        snippet = (row.get("description_snippet", "") or "")[:280].replace("\n", " ")
+        snippet = (row.get("description_snippet", "") or "")[:260].replace("\n", " ")
 
-        print(f"\n--- Post {i} of {len(reader)} [ID: {row.get('id')}, Source: {row.get('source')}] ---")
-        print(f"Company:  \033[1m{company}\033[0m")
-        print(f"Title:    \033[1m{title}\033[0m")
-        print(f"Location: {raw_loc}")
-        print(f"Snippet:  {snippet}...")
-        print(f"LLM Tag:  Role = \033[36m{llm_role}\033[0m | City = \033[36m{llm_city}\033[0m")
+        print(f"\n--- Post {i} of {len(reader)} [ID: {row.get('id')} | Source: {row.get('source')}] ---")
+        print(f"Company:   \033[1m{company}\033[0m")
+        print(f"Title:     \033[1m{title}\033[0m")
+        print(f"Location:  {raw_loc}")
+        print(f"Snippet:   {snippet}...")
+        print(f"LLM Guess: Role = \033[36m{llm_role}\033[0m | City = \033[36m{llm_city}\033[0m")
 
-        # Prompt for Role
+        # 1. Role Selection
         while True:
-            prompt_str = f"Your Role [Enter = '{llm_role}'] > "
-            user_role = input(prompt_str).strip()
-            if user_role.lower() == 'q':
-                print("\nSaving and quitting...")
+            choice = input(f"Role [Enter='{llm_role}', or 1-9,0, or name] > ").strip()
+            if choice.lower() == 'q':
+                print("\nProgress saved. Exiting...")
                 _save(reader, fieldnames)
                 return
-            if not user_role:
+            if not choice:
                 chosen_role = llm_role
                 break
-            # Case-insensitive match against VALID_ROLES
-            matched = [r for r in VALID_ROLES if r.lower() == user_role.lower()]
+            if choice in ROLES_MAP:
+                chosen_role = ROLES_MAP[choice]
+                break
+            matched = [r for r in VALID_ROLES if r.lower() == choice.lower()]
             if matched:
                 chosen_role = matched[0]
                 break
-            else:
-                print(f"  Invalid role '{user_role}'. Valid options: {', '.join(VALID_ROLES)}")
+            print(f"  Invalid choice '{choice}'. Enter 1-9, 0, or role name.")
 
-        # Prompt for City
-        prompt_city = f"Your City [Enter = '{llm_city}'] > "
-        user_city = input(prompt_city).strip()
-        if user_city.lower() == 'q':
+        # 2. City Selection
+        city_choice = input(f"City [Enter='{llm_city}', or type city] > ").strip()
+        if city_choice.lower() == 'q':
             row["my_correct_role"] = chosen_role
             _save(reader, fieldnames)
             return
-        chosen_city = user_city if user_city else llm_city
+        chosen_city = city_choice if city_choice else llm_city
 
         row["my_correct_role"] = chosen_role
         row["my_correct_city"] = chosen_city
-
         _save(reader, fieldnames)
-        print(f"Saved: Role = {chosen_role}, City = {chosen_city}")
 
-    print("\n" + "=" * 70)
-    print("All 50 posts have been hand-labeled! Running evaluation script...")
-    print("=" * 70 + "\n")
+        is_role_match = (chosen_role == llm_role)
+        is_city_match = (chosen_city == llm_city)
+        status_str = f"Saved: Role={chosen_role} ({'MATCH' if is_role_match else 'DIFF'}), City={chosen_city} ({'MATCH' if is_city_match else 'DIFF'})"
+        print(status_str)
+
+    print("\n" + "=" * 75)
+    print("All 50 posts completed! Running statistical evaluation...")
+    print("=" * 75 + "\n")
     eval_script = os.path.join(os.path.dirname(__file__), "eval_accuracy.py")
     subprocess.run([sys.executable, eval_script, CSV_PATH])
 
