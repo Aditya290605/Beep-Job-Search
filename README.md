@@ -116,11 +116,12 @@ PYTHONPATH=backend python3 -m app.pipeline
 
 ---
 
-## 6. Key Documentation & Submission Artifacts
+## 6. Key Documentation & Submission Deliverables
 
-- [`SOURCES.md`](file:///Users/adityamagar/Beep-Job-Search/SOURCES.md) — All 8 active data sources, live counts, endpoints, and legal/ToS assessment
-- [`PROMPTS.md`](file:///Users/adityamagar/Beep-Job-Search/PROMPTS.md) — Verbatim in-app system prompt, user template, and JSON schema
-- [`COST_REPORT.md`](file:///Users/adityamagar/Beep-Job-Search/COST_REPORT.md) — Live token usage, official pricing, per-1k & monthly GCP run cost
-- [`EVALUATION_REPORT.md`](file:///Users/adityamagar/Beep-Job-Search/EVALUATION_REPORT.md) — 50-post random stratified evaluation methodology & accuracy results
-- [`BROKE_LOG.md`](file:///Users/adityamagar/Beep-Job-Search/BROKE_LOG.md) — Real production bugs encountered and how each was fixed
-- [`submission/`](file:///Users/adityamagar/Beep-Job-Search/submission) — Complete export pack (`dataset_active_jobs.csv`, `accuracy_sample_50.csv`, `eval_accuracy.py`, `LOOM_SCRIPT_5MIN.md`, `TOOLS_USED.md`)
+- [`SUBMISSION.md`](file:///Users/adityamagar/Beep-Job-Search/SUBMISSION.md) — Complete master submission report (Architecture, Sources, Prompts, Costs, Accuracy, Incident Post-Mortems)
+- [`submission/COST_REPORT.md`](file:///Users/adityamagar/Beep-Job-Search/submission/COST_REPORT.md) — Live token telemetry, official Google pricing, and cost per 1k & monthly GCP run cost
+- [`submission/SOURCES.md`](file:///Users/adityamagar/Beep-Job-Search/submission/SOURCES.md) — All 8 active data sources, live counts, endpoints, and legal/ToS assessment
+- [`submission/PROMPTS.md`](file:///Users/adityamagar/Beep-Job-Search/submission/PROMPTS.md) / [`prompts.csv`](file:///Users/adityamagar/Beep-Job-Search/submission/prompts.csv) — In-app system prompt, JSON schema, and AI workflow prompts
+- [`submission/LOOM_SCRIPT_5MIN.md`](file:///Users/adityamagar/Beep-Job-Search/submission/LOOM_SCRIPT_5MIN.md) — 5-minute video walkthrough script
+- [`submission/accuracy_sample_50.csv`](file:///Users/adityamagar/Beep-Job-Search/submission/accuracy_sample_50.csv) — 50-post hand-checked evaluation dataset (98% accuracy)
+- [`submission/eval_accuracy.py`](file:///Users/adityamagar/Beep-Job-Search/submission/eval_accuracy.py) — Accuracy evaluation script with Wilson 95% confidence intervals
