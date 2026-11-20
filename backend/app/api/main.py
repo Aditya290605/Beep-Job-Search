@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 # Ensure backend root is on sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from fastapi import FastAPI, Query, HTTPException, Request
+from fastapi import FastAPI, Query, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -31,12 +31,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Enable CORS for local dev and Cloud Run domains
+# Enable public read-only CORS (credentials disabled with wildcard origin)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -73,6 +73,7 @@ async def add_process_time_header(request: Request, call_next):
 # --- Core Health & Status Endpoints ---
 
 @app.get("/healthz")
+@app.get("/api/health")
 def healthz():
     """Liveness, readiness & DB connectivity diagnostic probe for Cloud Run."""
     db_connected = False
@@ -120,8 +121,14 @@ def get_cost():
 
 
 @app.post("/api/refresh")
-def trigger_refresh():
-    """Triggers an on-demand or Cloud Scheduler pipeline run and returns run telemetry."""
+def trigger_refresh(x_refresh_secret: Optional[str] = Header(None, alias="X-Refresh-Secret")):
+    """Triggers an on-demand or Cloud Scheduler pipeline run (protected by X-Refresh-Secret in production)."""
+    expected_secret = os.environ.get("REFRESH_SECRET") or config.REFRESH_SECRET
+    if expected_secret:
+        if x_refresh_secret != expected_secret:
+            raise HTTPException(status_code=401, detail="Invalid or missing X-Refresh-Secret header")
+    elif (os.environ.get("ENV") or config.ENV).lower() == "production":
+        raise HTTPException(status_code=403, detail="On-demand /api/refresh disabled in production without REFRESH_SECRET")
     if not db:
         raise HTTPException(status_code=500, detail="Database uninitialized")
     from app.pipeline import run_pipeline

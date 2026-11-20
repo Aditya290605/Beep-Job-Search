@@ -128,6 +128,9 @@ class Database:
                 cur.execute(ddl)
                 cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ")
                 cur.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMPTZ")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_expires_at ON jobs(expires_at)")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_last_seen_at ON jobs(last_seen_at)")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_apply_url ON jobs(apply_url)")
             conn.commit()
             logger.info("Database initialized successfully.")
         finally:
@@ -326,10 +329,22 @@ class Database:
                             (existing_job_id, job.source_name, job.source_job_id, job.apply_url)
                         )
                     else:
-                        cur.execute(
-                            "UPDATE jobs SET last_seen_at = NOW(), last_verified_at = COALESCE(%s, NOW()), expires_at = COALESCE(%s, expires_at) WHERE id = %s",
-                            (verified_iso, expires_iso, existing_job_id)
-                        )
+                        if job.description and len(job.description) > max(existing_desc_len, 250):
+                            if existing_desc_len < 250:
+                                cur.execute(
+                                    "UPDATE jobs SET last_seen_at = NOW(), last_verified_at = COALESCE(%s, NOW()), expires_at = COALESCE(%s, expires_at), description = %s, tagged_at = NULL WHERE id = %s",
+                                    (verified_iso, expires_iso, job.description, existing_job_id)
+                                )
+                            else:
+                                cur.execute(
+                                    "UPDATE jobs SET last_seen_at = NOW(), last_verified_at = COALESCE(%s, NOW()), expires_at = COALESCE(%s, expires_at), description = %s WHERE id = %s",
+                                    (verified_iso, expires_iso, job.description, existing_job_id)
+                                )
+                        else:
+                            cur.execute(
+                                "UPDATE jobs SET last_seen_at = NOW(), last_verified_at = COALESCE(%s, NOW()), expires_at = COALESCE(%s, expires_at) WHERE id = %s",
+                                (verified_iso, expires_iso, existing_job_id)
+                            )
                         cur.execute(
                             """
                             INSERT INTO job_sources (job_id, source_name, source_job_id, url)
@@ -374,6 +389,7 @@ class Database:
                                 source_name, source_job_id, first_seen_at, last_seen_at,
                                 expires_at, last_verified_at, is_active
                             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, COALESCE(%s, NOW()), TRUE)
+                            ON CONFLICT (normalized_key) DO UPDATE SET last_seen_at = NOW()
                             RETURNING id
                             """,
                             (
@@ -406,18 +422,25 @@ class Database:
                 conn.close()
 
     def start_pipeline_run(self) -> int:
-        """Records the start of a pipeline run, returning its run_id."""
+        """Records the start of a pipeline run, cleaning up any stale orphaned 'running' rows first."""
         conn = self.get_connection()
         try:
             cur = conn.cursor()
             if self.is_sqlite:
                 now_str = datetime.now(timezone.utc).isoformat()
                 cur.execute(
+                    "UPDATE pipeline_runs SET status = 'failed', finished_at = ?, error_message = 'Orphaned run timed out or crashed' WHERE status = 'running' AND started_at < datetime('now', '-30 minutes')",
+                    (now_str,)
+                )
+                cur.execute(
                     "INSERT INTO pipeline_runs (started_at, status) VALUES (?, 'running')",
                     (now_str,)
                 )
                 run_id = cur.lastrowid
             else:
+                cur.execute(
+                    "UPDATE pipeline_runs SET status = 'failed', finished_at = NOW(), error_message = 'Orphaned run timed out or crashed' WHERE status = 'running' AND started_at < NOW() - INTERVAL '30 minutes'"
+                )
                 cur.execute(
                     "INSERT INTO pipeline_runs (started_at, status) VALUES (NOW(), 'running') RETURNING id"
                 )

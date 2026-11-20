@@ -65,6 +65,15 @@ class TestAdapterUtilities(unittest.TestCase):
         self.assertFalse(is_fresher_job("Software Engineer 2"))
         self.assertFalse(is_fresher_job("SDE II"))
         self.assertFalse(is_fresher_job("Senior Data Analyst"))
+        self.assertFalse(is_fresher_job("Bank Loans, Associate 2"))
+        self.assertFalse(is_fresher_job("Graphic Designer (Consultant)-2"))
+
+    def test_extract_job_type_word_boundary(self):
+        # Must NOT match "internal" or "international" as internship
+        self.assertEqual(extract_job_type("Remote Office Assistant", "Support internal operations and reporting."), "job")
+        self.assertEqual(extract_job_type("Associate Client Support", "Work with international teams."), "job")
+        self.assertEqual(extract_job_type("Software Engineer Intern", "6-month summer program."), "internship")
+        self.assertEqual(extract_job_type("Summer Tech Role", "Open internship for 2026 graduates."), "internship")
 
     def test_clean_html(self):
         raw = "<p>Join our <strong>engineering</strong> team!&nbsp;Apply today &amp; grow.</p>"

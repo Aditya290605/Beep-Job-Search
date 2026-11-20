@@ -32,6 +32,7 @@ PROJECT_ID = os.environ.get("GCP_PROJECT_ID", "my-project-002-515013")
 REGION = os.environ.get("GCP_REGION", "asia-south1")
 PORT = int(os.environ.get("PORT", "8080"))
 ENV = os.environ.get("ENV", "development")
+REFRESH_SECRET = os.environ.get("REFRESH_SECRET", "")
 
 # User agent for compliant API calls & scraping
 USER_AGENT = os.environ.get(
@@ -105,18 +106,18 @@ VERTEX_REGION = os.environ.get("VERTEX_AI_REGION", "us-central1")
 VERTEX_AI_MODEL = os.environ.get("VERTEX_AI_MODEL", "gemini-3.5-flash-lite")
 VERTEX_AI_FALLBACK_MODEL = os.environ.get("VERTEX_AI_FALLBACK_MODEL", "gemini-3.5-flash")
 
-# Model pricing in USD per 1M tokens
+# Official Google Gemini / Vertex AI pricing in USD per 1M tokens (verified 2026-11-20)
 PRICING_PER_MILLION = {
-    "gemini-3.5-flash-lite": {"input": 0.10, "output": 0.40},
-    "gemini-3.5-flash": {"input": 0.30, "output": 2.50},
+    "gemini-3.5-flash-lite": {"input": 0.30, "output": 2.50},
+    "gemini-3.5-flash": {"input": 1.50, "output": 7.50},
     "gemini-2.5-flash-lite": {"input": 0.10, "output": 0.40},
     "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
     "gemini-2.0-flash-lite": {"input": 0.10, "output": 0.40},
     "gemini-2.0-flash-lite-preview-02-05": {"input": 0.10, "output": 0.40},
-    "gemini-2.5-flash-lite": {"input": 0.10, "output": 0.40},
     "gemini-1.5-flash-8b": {"input": 0.075, "output": 0.30},
     "gemini-1.5-flash": {"input": 0.15, "output": 0.60},
     "gemini-2.0-flash": {"input": 0.15, "output": 0.60},
-    "default": {"input": 0.10, "output": 0.40}
+    "heuristic_fallback": {"input": 0.0, "output": 0.0},
+    "default": {"input": 0.30, "output": 2.50}
 }
 

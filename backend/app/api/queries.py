@@ -38,9 +38,7 @@ def search_jobs(
     limit = max(1, min(100, limit))
     offset = (page - 1) * limit
 
-    # Automatically deactivate any expired jobs on load so expired postings never appear
-    db.deactivate_expired_jobs()
-
+    # Read-only query: expired postings are excluded below (and deactivated during scheduled pipeline runs)
     conditions = ["is_active = 1" if db.is_sqlite else "is_active = TRUE"]
     params: List[Any] = []
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -60,12 +58,13 @@ def search_jobs(
             like_val = f"%{search_term.lower()}%"
             params.extend([like_val, like_val, like_val, like_val])
         else:
-            # PostgreSQL full-text search with fallback to ILIKE
+            # PostgreSQL full-text search with fallback to ILIKE across title, company, and skills
             conditions.append(
                 "(to_tsvector('english', title || ' ' || company || ' ' || COALESCE(description, '')) @@ plainto_tsquery('english', %s) "
-                "OR title ILIKE %s OR company ILIKE %s)"
+                "OR title ILIKE %s OR company ILIKE %s OR COALESCE(skills::text, '') ILIKE %s)"
             )
-            params.extend([search_term, f"%{search_term}%", f"%{search_term}%"])
+            like_val = f"%{search_term}%"
+            params.extend([search_term, like_val, like_val, like_val])
 
     # 2. City filter
     if city and city.strip():
@@ -247,32 +246,37 @@ def search_jobs(
 
 def get_filter_options(db: Database) -> Dict[str, Any]:
     """
-    Returns active counts for cities, roles, job types, and sources to populate filter UI.
+    Returns active non-expired counts for cities, roles, job types, and sources to populate filter UI.
     """
-    db.deactivate_expired_jobs()
     conn = db.get_connection()
     try:
         cur = conn.cursor()
-        active_clause = "WHERE is_active = 1" if db.is_sqlite else "WHERE is_active = TRUE"
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if db.is_sqlite:
+            active_clause = "WHERE is_active = 1 AND (expires_at IS NULL OR expires_at = '' OR expires_at > ?)"
+            f_params: tuple = (now_iso,)
+        else:
+            active_clause = "WHERE is_active = TRUE AND (expires_at IS NULL OR expires_at > NOW())"
+            f_params = ()
 
         # Cities
-        cur.execute(f"SELECT city, COUNT(*) as cnt FROM jobs {active_clause} GROUP BY city ORDER BY cnt DESC")
+        cur.execute(f"SELECT city, COUNT(*) as cnt FROM jobs {active_clause} GROUP BY city ORDER BY cnt DESC", f_params)
         cities = [{"name": r[0] if isinstance(r, tuple) else r["city"], "count": r[1] if isinstance(r, tuple) else r["cnt"]} for r in cur.fetchall()]
 
         # Roles
-        cur.execute(f"SELECT role_tag, COUNT(*) as cnt FROM jobs {active_clause} GROUP BY role_tag ORDER BY cnt DESC")
+        cur.execute(f"SELECT role_tag, COUNT(*) as cnt FROM jobs {active_clause} GROUP BY role_tag ORDER BY cnt DESC", f_params)
         roles = [{"name": r[0] if isinstance(r, tuple) else r["role_tag"], "count": r[1] if isinstance(r, tuple) else r["cnt"]} for r in cur.fetchall()]
 
         # Job types
-        cur.execute(f"SELECT job_type, COUNT(*) as cnt FROM jobs {active_clause} GROUP BY job_type ORDER BY cnt DESC")
+        cur.execute(f"SELECT job_type, COUNT(*) as cnt FROM jobs {active_clause} GROUP BY job_type ORDER BY cnt DESC", f_params)
         job_types = [{"name": r[0] if isinstance(r, tuple) else r["job_type"], "count": r[1] if isinstance(r, tuple) else r["cnt"]} for r in cur.fetchall()]
 
         # Sources
-        cur.execute(f"SELECT source_name, COUNT(*) as cnt FROM jobs {active_clause} GROUP BY source_name ORDER BY cnt DESC")
+        cur.execute(f"SELECT source_name, COUNT(*) as cnt FROM jobs {active_clause} GROUP BY source_name ORDER BY cnt DESC", f_params)
         sources = [{"name": r[0] if isinstance(r, tuple) else r["source_name"], "count": r[1] if isinstance(r, tuple) else r["cnt"]} for r in cur.fetchall()]
 
         # Total active count
-        cur.execute(f"SELECT COUNT(*) FROM jobs {active_clause}")
+        cur.execute(f"SELECT COUNT(*) FROM jobs {active_clause}", f_params)
         total = cur.fetchone()[0]
 
         return {

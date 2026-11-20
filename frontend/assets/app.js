@@ -12,6 +12,7 @@
   let useMock = new URLSearchParams(location.search).has("mock");
   const PAGE_SIZE = 12;
   const SAVED_STORAGE_KEY = "beep_saved_jobs_v1";
+  const SAVED_DATA_KEY = "beep_saved_jobs_data_v1";
   const INTRO_SESSION_KEY = "beep_intro_seen_v1";
   const FILTER_KEYS = ["city", "job_type", "workplace", "role", "source", "posted_within"];
   const MOBILE = window.matchMedia("(max-width: 920px)");
@@ -102,7 +103,7 @@
     "#F3E8FF",
   ];
 
-  // ---------- Saved Jobs (localStorage) ----------
+  // ---------- Saved Jobs (localStorage — stores full snapshots so live Postgres IDs always render) ----------
   function getSavedIds() {
     try {
       const raw = localStorage.getItem(SAVED_STORAGE_KEY);
@@ -112,11 +113,23 @@
     }
   }
 
+  function getSavedJobsMap() {
+    try {
+      const raw = localStorage.getItem(SAVED_DATA_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
   let savedIds = getSavedIds();
+  let savedJobsMap = getSavedJobsMap();
 
   function saveSavedIds() {
     try {
       localStorage.setItem(SAVED_STORAGE_KEY, JSON.stringify([...savedIds]));
+      localStorage.setItem(SAVED_DATA_KEY, JSON.stringify(savedJobsMap));
     } catch {
       /* ignore quota errors */
     }
@@ -127,9 +140,15 @@
     const id = String(jobId);
     if (savedIds.has(id)) {
       savedIds.delete(id);
+      delete savedJobsMap[id];
       toast("Removed from saved jobs");
     } else {
+      const found =
+        (data && data.jobs && data.jobs.find((j) => String(j.id) === id)) ||
+        savedJobsMap[id] ||
+        mockJobs().find((j) => String(j.id) === id);
       savedIds.add(id);
+      if (found) savedJobsMap[id] = found;
       toast("Saved to your shortlist");
     }
     saveSavedIds();
@@ -236,16 +255,51 @@
   }
 
   // ---------- Data Layer ----------
+  let mockLoadPromise = null;
+  function ensureMockLoaded() {
+    if ((window.MOCK && window.MOCK.jobs) || window.__MOCK_JOBS__) {
+      return Promise.resolve();
+    }
+    if (!mockLoadPromise) {
+      mockLoadPromise = new Promise((resolve) => {
+        const s = document.createElement("script");
+        s.src = "/assets/mock-data.js";
+        s.onload = () => resolve();
+        s.onerror = () => resolve();
+        document.head.appendChild(s);
+      });
+    }
+    return mockLoadPromise;
+  }
+
   const mockJobs = () => {
     const raw = (window.MOCK && window.MOCK.jobs) || window.__MOCK_JOBS__ || [];
     const now = Date.now();
     return raw.filter((j) => !j.expires_at || Date.parse(j.expires_at) > now);
   };
 
+  function getSavedJobsList() {
+    const byId = new Map();
+    Object.values(savedJobsMap).forEach((j) => {
+      if (j && savedIds.has(String(j.id))) byId.set(String(j.id), j);
+    });
+    if (data && Array.isArray(data.jobs)) {
+      data.jobs.forEach((j) => {
+        if (savedIds.has(String(j.id)) && !byId.has(String(j.id))) byId.set(String(j.id), j);
+      });
+    }
+    mockJobs().forEach((j) => {
+      if (savedIds.has(String(j.id)) && !byId.has(String(j.id))) byId.set(String(j.id), j);
+    });
+    const now = Date.now();
+    return [...byId.values()].filter((j) => !j.expires_at || Date.parse(j.expires_at) > now);
+  }
+
   function mockFilter(s) {
     const q = s.q.trim().toLowerCase();
     const cutoff = { "24h": 24, "7d": 168, "30d": 720 }[s.posted_within];
-    return mockJobs()
+    const pool = s.view === "saved" ? getSavedJobsList() : mockJobs();
+    return pool
       .filter((j) => {
         if (s.view === "saved" && !savedIds.has(String(j.id))) return false;
         if (q) {
@@ -283,7 +337,11 @@
   }
 
   async function fetchJobs(s) {
-    if (useMock || s.view === "saved") {
+    if (s.view === "saved") {
+      return mockPaginate(s);
+    }
+    if (useMock) {
+      await ensureMockLoaded();
       return mockPaginate(s);
     }
     try {
@@ -292,12 +350,14 @@
       const res = await fetch(`/api/jobs?${p}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      if (json.total === 0 && !s.q && !s.city && !s.role && !s.job_type && !s.workplace && !s.source && !s.posted_within && mockJobs().length > 0) {
-        return mockPaginate(s);
+      if (json.total === 0 && !s.q && !s.city && !s.role && !s.job_type && !s.workplace && !s.source && !s.posted_within) {
+        await ensureMockLoaded();
+        if (mockJobs().length > 0) return mockPaginate(s);
       }
       return json;
     } catch {
       useMock = true;
+      await ensureMockLoaded();
       return mockPaginate(s);
     }
   }
@@ -325,6 +385,7 @@
 
   async function fetchFilterCounts() {
     if (useMock) {
+      await ensureMockLoaded();
       return mockFilterCounts();
     }
     try {
@@ -332,9 +393,12 @@
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const total = data.total_active_jobs || (data.job_types || []).reduce((acc, t) => acc + t.count, 0);
-      if (total === 0 && mockJobs().length > 0) {
-        useMock = true;
-        return mockFilterCounts();
+      if (total === 0) {
+        await ensureMockLoaded();
+        if (mockJobs().length > 0) {
+          useMock = true;
+          return mockFilterCounts();
+        }
       }
       const remCount = ((data.cities || []).find((c) => c.name === "Remote") || {}).count || 0;
       data.workplaces = [
@@ -345,6 +409,7 @@
       return data;
     } catch {
       useMock = true;
+      await ensureMockLoaded();
       return mockFilterCounts();
     }
   }
@@ -592,7 +657,9 @@
     const typeText = TYPE_LABEL[j.job_type] || "Full Time";
     const srcLabel = SOURCE_LABEL[j.source_name] || j.source_name;
     const skills = j.skills && j.skills.length ? j.skills : ["Analytical Thinking", "Problem Solving"];
-    const extraSources = (j.sources || []).filter((s) => s.apply_url && s.apply_url !== j.apply_url);
+    const extraSources = (j.sources || [])
+      .map((s) => ({ source_name: s.source_name, href: s.url || s.apply_url }))
+      .filter((s) => s.href && s.href !== j.apply_url);
 
     el.detail.innerHTML = `
       <div class="detail-back">
@@ -619,8 +686,7 @@
         <h2 class="d-title">${esc(j.title)}</h2>
 
         <div class="chips">
-          <span class="chip chip-green">Fresher Friendly &middot; 0&ndash;1 yrs</span>
-          <span class="chip">${esc(expLabel(j))}</span>
+          <span class="chip chip-green">Fresher Friendly &middot; ${esc(expLabel(j))}</span>
           <span class="chip${j.job_type === "internship" ? " chip-yellow" : ""}">${esc(typeText)}</span>
           ${j.role_tag ? `<span class="chip chip-outline">${esc(j.role_tag)}</span>` : ""}
         </div>
@@ -683,7 +749,7 @@
               .map(
                 (s) => `
               <li>
-                <a href="${esc(safeUrl(s.apply_url))}" target="_blank" rel="noopener noreferrer">
+                <a href="${esc(safeUrl(s.href))}" target="_blank" rel="noopener noreferrer">
                   <span>Alternative listing on ${esc(SOURCE_LABEL[s.source_name] || s.source_name)}</span>
                   ${ICON.out}
                 </a>
@@ -708,6 +774,7 @@
     if (!state.job) return null;
     return (
       data.jobs.find((j) => String(j.id) === String(state.job)) ||
+      savedJobsMap[String(state.job)] ||
       mockJobs().find((j) => String(j.id) === String(state.job)) ||
       null
     );
@@ -721,13 +788,13 @@
 
   // ---------- Render: Pipeline Status & Cost Telemetry ----------
   async function renderStatusView() {
-    let activeCount = mockJobs().length;
-    let dupesSkipped = 68;
-    let costPer1000 = 0.042;
+    let activeCount = 0;
+    let dupesSkipped = 0;
+    let costPer1000 = 0;
+    let lastUpdated = null;
+    let recentRuns = [];
+    let latestSources = {};
     let bySource = {};
-    mockJobs().forEach((j) => {
-      bySource[j.source_name] = (bySource[j.source_name] || 0) + 1;
-    });
 
     if (!useMock) {
       try {
@@ -740,14 +807,17 @@
           const st = await stRes.json();
           const cost = await costRes.json();
           const flt = await fltRes.json();
-          if (st.total_active_jobs > 0) {
-            activeCount = st.total_active_jobs;
+          activeCount = st.total_active_jobs || 0;
+          lastUpdated = st.last_updated || null;
+          recentRuns = st.recent_runs || [];
+          if (recentRuns[0]) {
+            dupesSkipped = recentRuns[0].duplicates_skipped ?? 0;
+            latestSources = recentRuns[0].sources_summary || {};
           }
-          if (st.recent_runs && st.recent_runs[0]) {
-            dupesSkipped = st.recent_runs[0].duplicates_skipped ?? dupesSkipped;
-          }
-          if (cost.cost_per_1000_posts_usd > 0) {
-            costPer1000 = cost.cost_per_1000_posts_usd;
+          if (cost.total_posts_tagged > 0) {
+            // Recompute at official gemini-3.5-flash-lite rate ($0.30/1M in, $2.50/1M out) if logged lower
+            const calc = ((cost.total_input_tokens * 0.30 + cost.total_output_tokens * 2.50) / 1e6) / cost.total_posts_tagged * 1000;
+            costPer1000 = Math.max(cost.cost_per_1000_posts_usd || 0, calc);
           }
           if (flt.sources && flt.sources.length > 0) {
             bySource = {};
@@ -757,42 +827,62 @@
           }
         }
       } catch {
-        /* fallback to snapshot metrics */
+        /* fallback if API unreachable */
       }
     }
 
     const sourceRows = Object.entries(bySource)
       .sort((a, b) => b[1] - a[1])
-      .map(
-        ([src, count]) => `
+      .map(([src, count]) => {
+        const fetched = latestSources[src];
+        const statusChip =
+          fetched === 0
+            ? '<span class="chip chip-yellow">0 Fetched Last Run</span>'
+            : '<span class="chip chip-green">Active</span>';
+        return `
         <tr>
           <td><strong>${esc(SOURCE_LABEL[src] || src)}</strong></td>
-          <td>${count} active jobs</td>
-          <td><span class="chip chip-green">Healthy (200 OK)</span></td>
-        </tr>`
-      )
+          <td>${count} active jobs${fetched != null ? ` (${fetched} fetched)` : ""}</td>
+          <td>${statusChip}</td>
+        </tr>`;
+      })
+      .join("");
+
+    const runRows = recentRuns
+      .slice(0, 8)
+      .map((r) => {
+        const chipClass = r.status === "success" ? "chip-green" : "chip-yellow";
+        return `
+        <tr>
+          <td>#${r.id}</td>
+          <td>${esc(relTime(r.started_at))}</td>
+          <td><span class="chip ${chipClass}">${esc(r.status)}</span></td>
+          <td>${r.total_fetched ?? 0} fetched / ${r.new_posts ?? 0} new / ${r.duplicates_skipped ?? 0} dupes</td>
+          <td>${r.tagged_count ?? 0} tagged</td>
+        </tr>`;
+      })
       .join("");
 
     el.statusContent.innerHTML = `
       <div class="stat-card">
         <div class="stat-label">Active Fresher Listings</div>
         <div class="stat-value">${activeCount}</div>
-        <div class="stat-desc">Verified 0–1 yr jobs &amp; internships in India</div>
+        <div class="stat-desc">Verified 0&ndash;1 yr jobs &amp; internships in India</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Deduplication Engine</div>
+        <div class="stat-label">Last Run Deduplication</div>
         <div class="stat-value">${dupesSkipped} Skipped</div>
         <div class="stat-desc">Exact normalized key + RapidFuzz token-sort guardrails</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">LLM Cost / 1,000 Posts</div>
-        <div class="stat-value">$${Number(costPer1000).toFixed(3)}</div>
-        <div class="stat-desc">Vertex AI Gemini Flash-Lite (batched 15 posts/call)</div>
+        <div class="stat-value">$${Number(costPer1000).toFixed(2)}</div>
+        <div class="stat-desc">Gemini 3.5 Flash-Lite (batched 8 posts/call, $0.30/$2.50 per 1M)</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Refresh Cadence</div>
         <div class="stat-value">Every 2h</div>
-        <div class="stat-desc">Cloud Scheduler &rarr; Cloud Run Job &rarr; Cloud SQL</div>
+        <div class="stat-desc">${lastUpdated ? `Last synced ${esc(relTime(lastUpdated))}` : "Cloud Scheduler &rarr; Cloud Run Job &rarr; Cloud SQL"}</div>
       </div>
       <div class="stat-card wide">
         <div class="stat-label">Live Adapter Breakdown (Zero-Key Public Sources)</div>
@@ -801,14 +891,35 @@
             <tr>
               <th>Adapter / Source</th>
               <th>Stored Active Posts</th>
-              <th>Status</th>
+              <th>Latest Run Status</th>
             </tr>
           </thead>
           <tbody>
-            ${sourceRows}
+            ${sourceRows || '<tr><td colspan="3">No live adapter telemetry available.</td></tr>'}
           </tbody>
         </table>
-      </div>`;
+      </div>
+      ${
+        runRows
+          ? `<div class="stat-card wide">
+        <div class="stat-label">Recent Unattended Scheduled Runs</div>
+        <table class="status-table">
+          <thead>
+            <tr>
+              <th>Run</th>
+              <th>Started</th>
+              <th>Status</th>
+              <th>Ingestion &amp; Dedupe</th>
+              <th>LLM Tagged</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${runRows}
+          </tbody>
+        </table>
+      </div>`
+          : ""
+      }`;
   }
 
   // ---------- Load & Sync Cycle ----------

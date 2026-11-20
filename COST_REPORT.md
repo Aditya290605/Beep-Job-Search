@@ -1,98 +1,70 @@
-# Beep Job Hub - LLM Ingestion & Tagging Cost Report
+# Cost Report — LLM Tagging & Monthly GCP Run Cost (Evidence-Based)
 
-**Date:** 2026-11-18  
-**Model:** `gemini-3.5-flash-lite`  
-**API Provider:** Google Cloud Vertex AI / Generative Language API  
-**Database:** `test_live.db`  
+> **Audit Date:** 2026-11-20  
+> **Live Data Source:** `GET https://beep-job-hub-524515781472.asia-south1.run.app/api/metrics/cost` + live dry-run `usageMetadata` probe on `gemini-3.5-flash-lite`.
 
 ---
 
-## 1. Executive Summary
+## 1. Where Tokens Are Logged (and What Was Wrong Before)
 
-| Metric | Live Value | Unit Benchmark |
-| :--- | :---: | :---: |
-| **Total Jobs Tagged** | **267** | 100% of open fresher jobs |
-| **Active Jobs Indexed** | **207** | Live in Web UI & SQLite |
-| **Total Input Tokens** | **492,153** | ~205 tokens / post |
-| **Total Output Tokens** | **32,973** | ~72.5 tokens / post |
-| **Total Incurred Cost** | **$0.06241** (~1 cent) | Real live API billing |
-| **Cost per 1,000 Posts** | **$0.2337** | **<$0.05 / 1k posts** |
-
----
-
-## 2. Live Batch Execution Telemetry
-
-The pipeline processes jobs in optimal batches of 25–30 posts to balance prompt caching, context window efficiency, and parallel HTTP throughput:
-
-| Batch # | Model | Posts Tagged | Input Tokens | Output Tokens | Total Tokens | Batch Cost (USD) |
-| :---: | :--- | :---: | :---: | :---: | :---: | :---: |
-| 1 | `gemini-3.5-flash-lite` | 8 | 16,680 | 1,061 | 17,741 | $0.002092 |
-| 2 | `gemini-3.5-flash-lite` | 8 | 18,750 | 957 | 19,707 | $0.002258 |
-| 3 | `gemini-3.5-flash-lite` | 8 | 20,572 | 1,105 | 21,677 | $0.002499 |
-| 4 | `gemini-3.5-flash-lite` | 8 | 15,619 | 937 | 16,556 | $0.001937 |
-| 5 | `gemini-3.5-flash-lite` | 8 | 10,745 | 993 | 11,738 | $0.001472 |
-| 6 | `gemini-3.5-flash-lite` | 8 | 14,519 | 1,021 | 15,540 | $0.001860 |
-| 7 | `gemini-3.5-flash-lite` | 8 | 12,154 | 1,019 | 13,173 | $0.001623 |
-| 8 | `gemini-3.5-flash-lite` | 8 | 17,238 | 1,110 | 18,348 | $0.002168 |
-| 9 | `gemini-3.5-flash-lite` | 8 | 19,332 | 1,119 | 20,451 | $0.002381 |
-| 10 | `gemini-3.5-flash-lite` | 8 | 19,020 | 887 | 19,907 | $0.002257 |
-| 11 | `gemini-3.5-flash-lite` | 8 | 13,328 | 1,076 | 14,404 | $0.001763 |
-| 12 | `gemini-3.5-flash-lite` | 8 | 6,530 | 869 | 7,399 | $0.001001 |
-| 13 | `gemini-3.5-flash-lite` | 8 | 3,078 | 734 | 3,812 | $0.000601 |
-| 14 | `gemini-3.5-flash-lite` | 8 | 8,202 | 871 | 9,073 | $0.001169 |
-| 15 | `gemini-3.5-flash-lite` | 8 | 9,318 | 906 | 10,224 | $0.001294 |
-| 16 | `gemini-3.5-flash-lite` | 7 | 4,403 | 612 | 5,015 | $0.000685 |
-| 17 | `gemini-3.5-flash-lite` | 8 | 16,374 | 1,064 | 17,438 | $0.002063 |
-| 18 | `gemini-3.5-flash-lite` | 8 | 17,018 | 957 | 17,975 | $0.002085 |
-| 19 | `gemini-3.5-flash-lite` | 8 | 15,374 | 1,067 | 16,441 | $0.001964 |
-| 20 | `gemini-3.5-flash-lite` | 8 | 16,501 | 928 | 17,429 | $0.002021 |
-| 21 | `gemini-3.5-flash-lite` | 8 | 11,022 | 896 | 11,918 | $0.001461 |
-| 22 | `gemini-3.5-flash-lite` | 3 | 1,198 | 276 | 1,474 | $0.000230 |
-| 23 | `gemini-3.5-flash-lite` | 8 | 18,877 | 1,172 | 20,049 | $0.002357 |
-| 24 | `gemini-3.5-flash-lite` | 8 | 15,178 | 998 | 16,176 | $0.001917 |
-| 25 | `gemini-3.5-flash-lite` | 8 | 19,724 | 1,090 | 20,814 | $0.002408 |
-| 26 | `gemini-3.5-flash-lite` | 8 | 19,594 | 1,123 | 20,717 | $0.002409 |
-| 27 | `gemini-3.5-flash-lite` | 7 | 12,238 | 852 | 13,090 | $0.001565 |
-| 28 | `gemini-3.5-flash-lite` | 8 | 15,384 | 1,107 | 16,491 | $0.001981 |
-| 29 | `gemini-3.5-flash-lite` | 8 | 19,185 | 1,005 | 20,190 | $0.002321 |
-| 30 | `gemini-3.5-flash-lite` | 8 | 13,985 | 968 | 14,953 | $0.001786 |
-| 31 | `gemini-3.5-flash-lite` | 8 | 14,889 | 964 | 15,853 | $0.001875 |
-| 32 | `gemini-3.5-flash-lite` | 8 | 18,890 | 885 | 19,775 | $0.002243 |
-| 33 | `gemini-3.5-flash-lite` | 1 | 2,485 | 139 | 2,624 | $0.000304 |
-| 34 | `gemini-3.5-flash-lite` | 8 | 15,993 | 986 | 16,979 | $0.001994 |
-| 35 | `gemini-3.5-flash-lite` | 8 | 14,825 | 1,065 | 15,890 | $0.001909 |
-| 36 | `gemini-3.5-flash-lite` | 1 | 3,931 | 154 | 4,085 | $0.000455 |
-| **Total** | `gemini-3.5-flash-lite` | **267** | **492,153** | **32,973** | **525,126** | **$0.06241** |
+- **Database table:** `llm_cost_logs` (`backend/app/schema.sql:70-79`), written by `Database.log_llm_cost()` (`db.py:473-499`) on every batch inside `enrich_untagged_jobs()` (`tagger.py:524-531`), and served live at `GET /api/metrics/cost`.
+- **Live Cloud SQL Totals (through Run #12, `2026-11-20T04:37Z`):**
+  - **API calls:** `43`
+  - **Posts tagged:** `298`
+  - **Total input tokens:** `533,333` (**1,789.7 input tokens / post**)
+  - **Total output tokens:** `36,063` (**121.0 output tokens / post**)
+  - **Thinking tokens:** **0** — *Note: `tagger.py:402-404` does NOT log `thoughtsTokenCount`, so we verified directly via live REST API dry-run (`2026-11-20`) on `gemini-3.5-flash-lite`: `promptTokenCount=10008`, `candidatesTokenCount=946`, `totalTokenCount=10954` (`10008 + 946 = 10954`, zero thinking tokens).*
+- **Two Critical Cost Bugs Found in Code:**
+  1. **Outdated pricing constant (`backend/app/config.py:110`):** Hardcoded `gemini-3.5-flash-lite` at `$0.10 / 1M` input and `$0.40 / 1M` output (which is `gemini-2.5-flash-lite`'s price). Official Google pricing for `gemini-3.5-flash-lite` (checked `2026-11-20` on `ai.google.dev/gemini-api/docs/pricing` & `cloud.google.com/vertex-ai/generative-ai/pricing`) is **$0.30 / 1M input** and **$2.50 / 1M output** (Global Standard). Thus the app's `/api/metrics/cost` endpoint (`$0.0678` total / `$0.2274` per 1k) **under-reports true `gemini-3.5-flash-lite` cost by 3.7x**!
+  2. **Duplicated description field (`backend/app/tagger.py:132-133`):** `build_tagging_payload()` sends **both** `"description": snippet` and `"description_snippet": snippet` (up to 6,000 chars each = 12,000 chars per job). Live Gemini API test on 8 jobs proved removing the duplicate key cuts prompt tokens by **43.2%** (`10,008` -> `5,686` tokens).
 
 ---
 
-## 3. Official Model Pricing Structure
+## 2. Official Google Gemini Pricing Used (Cited `2026-11-20`)
 
-Google Cloud Vertex AI official pricing tier for `gemini-3.5-flash-lite`:
-- **Input Prompt Tokens:** $0.10 per 1,000,000 tokens ($0.00000010 per token)
-- **Output Completion Tokens:** $0.40 per 1,000,000 tokens ($0.00000040 per token)
-- **Context Window:** Up to 1,000,000 tokens
-- **Structured Outputs:** Enforced via `response_mime_type='application/json'` schema constraint, eliminating Markdown fences (````json...````) and retry waste.
+Sources: `https://ai.google.dev/gemini-api/docs/pricing` and `https://cloud.google.com/vertex-ai/generative-ai/pricing` (verified `2026-11-20`):
 
----
-
-## 4. Projected Scale Projections
-
-| Production Scale | Posts Ingested | Est. Input Tokens | Est. Output Tokens | Projected LLM Cost |
-| :--- | :---: | :---: | :---: | :---: |
-| **Current Run** | 267 | 492,153 | 32,973 | **$0.0624** |
-| **Daily Incremental** (~1,000 new jobs) | 1,000 | ~205,000 | ~72,500 | **$0.2337** (~5 cents) |
-| **Monthly Ingestion** (~15,000 new jobs) | 15,000 | ~3,075,000 | ~1,087,500 | **$3.51** (~74 cents) |
-| **National Scale** (~100,000 jobs) | 100,000 | ~20,500,000 | ~7,250,000 | **$23.37** (~$4.95) |
+| Model | Input ($ / 1M tokens) | Output ($ / 1M tokens, incl. thinking) | Notes |
+|-------|-----------------------|----------------------------------------|-------|
+| `gemini-3.5-flash-lite` *(currently active)* | **$0.30** | **$2.50** | Global standard ($0.33/$2.75 non-global) |
+| `gemini-2.5-flash-lite` | **$0.10** | **$0.40** | Cheapest Flash-Lite tier |
+| `gemini-3.5-flash` *(bigger Flash)* | **$1.50** ($0.75 promo) | **$7.50** ($3.75 promo) | Standard tier / promotional rate |
+| `gemini-2.5-flash` *(deprecated)* | **$0.30** | **$2.50** | Routes to `gemini-3.5-flash-lite` |
 
 ---
 
-## 5. Token & Cost Optimization Engineering
+## 3. Cost per 1,000 Posts (Exact Arithmetic)
 
-1. **Content Distillation Before Prompting:** Raw HTML job descriptions (frequently 15,000+ characters of legal disclaimers, cookie banners, and EEO statements) are parsed and truncated to the core responsibilities and qualifications (max 1,200 characters). This reduced input token volume by **78%**.
-2. **Deduplication Gate Pre-LLM:** Exactly 68 duplicate postings were detected and linked by the SHA-256 normalized hash key (`company` + `clean_title` + `city`) before calling the LLM. Zero LLM calls were made for redundant postings.
-3. **Structured JSON Output:** Requesting a strict JSON schema array directly from the Gemini API prevented verbose chat framing (e.g. *"Here is the extracted information..."*), saving an estimated 35 output tokens per job post.
-4. **Batch Coalescing:** Grouping 30 posts per prompt allowed sharing the common system instruction and taxonomy schema across 30 records, amortizing prompt overhead to near-zero.
+Baseline per-post averages from 298 live logged posts:
+- **Current code (6,000 chars, duplicated key):** `1,789.7` input tokens/post, `121.0` output tokens/post, `0` thinking tokens/post.
+- **Deduplicated 6,000 chars** (empirically `-43.2%` prompt tokens in live API test: `5,686 / 10,008 = 0.5681`): `~1,016.8` input tokens/post, `121.0` output tokens/post.
+- **Trimmed 3,000 chars, deduplicated** (empirically `-50.1%` prompt tokens vs current: `4,991 / 10,008 = 0.4987`): `~892.5` input tokens/post, `121.0` output tokens/post.
+
+| Scenario | Model | Input Tokens / 1k Posts | Output Tokens / 1k Posts | Arithmetic | Cost / 1,000 Posts |
+|----------|-------|-------------------------|--------------------------|------------|--------------------|
+| **App Logged (WRONG rate)** | `gemini-3.5-flash-lite` @ $0.10/$0.40 | 1,789,708 | 121,017 | `(1.7897 × $0.10) + (0.1210 × $0.40)` | **$0.2274** *(understated)* |
+| **TRUE Current Live Code** | `gemini-3.5-flash-lite` @ $0.30/$2.50 | 1,789,708 | 121,017 | `(1.7897 × $0.30) + (0.1210 × $2.50)` | **$0.8395** |
+| **Fix duplicate key (keep 6,000 chars)** | `gemini-3.5-flash-lite` @ $0.30/$2.50 | 1,016,800 | 121,017 | `(1.0168 × $0.30) + (0.1210 × $2.50)` | **$0.6076** (-27.6%) |
+| **Trim to 3,000 chars (no dup key)** | `gemini-3.5-flash-lite` @ $0.30/$2.50 | 892,500 | 121,017 | `(0.8925 × $0.30) + (0.1210 × $2.50)` | **$0.5703** (-32.1%) |
+| **Switch to `gemini-2.5-flash-lite` (3,000 chars)** | `gemini-2.5-flash-lite` @ $0.10/$0.40 | 892,500 | 121,017 | `(0.8925 × $0.10) + (0.1210 × $0.40)` | **$0.1377** (-83.6%) |
+| **Bigger Flash (Current 6,000 dup)** | `gemini-3.5-flash` @ $1.50/$7.50 | 1,789,708 | 121,017 | `(1.7897 × $1.50) + (0.1210 × $7.50)` | **$3.5922** ($1.7961 promo) |
+| **Bigger Flash (Trimmed 3,000)** | `gemini-3.5-flash` @ $1.50/$7.50 | 892,500 | 121,017 | `(0.8925 × $1.50) + (0.1210 × $7.50)` | **$2.2464** ($1.1232 promo) |
 
 ---
-*Report generated automatically by `scripts/cost_report.py` from live pipeline database logs.*
+
+## 4. Monthly Run Cost (2-Hourly Refresh at Current Volume)
+
+Observed live steady-state volume from Runs #7–#12 (12 hours = 6 unattended runs):
+- New posts per 12 hours: `8 + 1 + 0 + 0 + 1 + 3 = 13` new posts $\approx$ **26 new posts/day** $\approx$ **780 new posts/month** (let's budget conservatively at **1,000 new posts/month**).
+- Refresh runs per month: `12 runs/day × 30 days = 360 runs/month`, averaging **6.8 minutes (408s)** per run at 1 vCPU / 512 MiB RAM.
+
+| GCP / AI Component | Usage Calculation | Monthly Cost (USD) |
+|--------------------|-------------------|--------------------|
+| **LLM Tagging (`gemini-3.5-flash-lite`)** | ~1,000 new posts/month @ `$0.84 / 1k` (current) or `$0.57 / 1k` (fixed 3k) | **$0.57 – $0.84** |
+| **Cloud Run Job (`beep-refresh-job`)** | 360 runs × 408s = `146,880` vCPU-s & `73,440` GiB-s (within Cloud Run monthly free tier of `180,000` vCPU-s & `360,000` GiB-s!) | **$0.00** *(~$2–$3 if free tier exceeded)* |
+| **Cloud Run Service (`beep-job-hub`)** | Scale-to-zero (`--min-instances 0`), low demo/student traffic (<50k req/mo, well inside 2M free req/mo) | **$0.00** |
+| **Cloud Scheduler (`beep-refresh-2hr`)** | 1 job (first 3 jobs/month free; `$0.10/job` after) | **$0.00** |
+| **Cloud SQL PostgreSQL (`db-f1-micro`, `asia-south1`)** | Always-on shared-core compute (~$8.00/mo) + 10 GB SSD storage (~$1.70/mo) + automated backups (~$0.50/mo) | **~$10.20 / month** |
+| **TOTAL MONTHLY RUN COST** | Dominated 92% by always-on Cloud SQL | **~$10.77 – $11.04 / month** |
+
+*Optimization note:* Moving from `2-hour` to `6-hour` cadence cuts Cloud Run Job compute by 3x (zero impact on freshness for campus jobs), and using Neon/Supabase free Postgres tier or Cloud SQL pause after demo cuts Cloud SQL from ~$10.20/mo to $0/mo.

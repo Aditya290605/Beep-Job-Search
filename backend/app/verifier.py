@@ -297,7 +297,7 @@ def _verify_generic_http(url: str, timeout: int = 8) -> VerificationResult:
         req = urllib.request.Request(
             url,
             headers={
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                "User-Agent": "Mozilla/5.0 (compatible; BeepJobHub/1.0; +https://github.com/Aditya290605/Beep-Job-Search)",
                 "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
             },
         )
@@ -311,6 +311,10 @@ def _verify_generic_http(url: str, timeout: int = 8) -> VerificationResult:
         return VerificationResult(is_open=True, reason=f"http_{e.code}_unverified")
     except Exception as e:
         return VerificationResult(is_open=True, reason=f"err_{type(e).__name__}")
+
+    # Reject explicit closed/not-found redirect query markers (e.g. Rippling ?rr_message=job_not_found)
+    if re.search(r"(?:job_not_found|posting_closed|position_filled|error=not_found)", final_url, re.I):
+        return VerificationResult(is_open=False, reason="closed_query_marker", apply_url=final_url)
 
     # If redirected to an ATS URL (e.g. shortlink -> Greenhouse/Lever/Workday), verify via ATS API!
     if final_url != url and any(

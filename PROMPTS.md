@@ -1,47 +1,39 @@
-# PROMPTS.md - Prompts Used Log
+# PROMPTS.md — Verbatim In-App LLM Prompts (Submission Copy)
 
-> Running record of every LLM prompt used in the application (tagging, taxonomy normalization) 
-> and the system prompts / user instructions used to build it.
-
----
-
-## 1. System & Build Prompts
-
-### 1.1 Initial Project Brief
-```text
-PROJECT BRIEF: "Fresher Jobs India" live job aggregator (Beep Gen AI & Engineering assessment)
-- 200+ fresher/intern job posts in India from public legal sources
-- Deduplication with plain code (normalized key + rapidfuzz)
-- LLM tagging: role taxonomy, normalized city (drop Unknown), fresher-friendly, experience, skills, confidence
-- Live searchable web tool on Cloud Run (FastAPI + React static export), Cloud SQL PostgreSQL, Cloud Scheduler (every 2 hrs)
-- Cloud Logging, token & cost tracking per 1,000 posts, evaluation tooling (50 hand-checked)
-```
+> **Audit Note:** Extracted verbatim from `backend/app/tagger.py` (commit `5a359de` / `ca3c9dd`).
+> **Important:** The application uses **ONLY ONE** LLM task: job tagging & enrichment (`backend/app/tagger.py`). There is **NO** LLM deduplication prompt in the codebase — deduplication is 100% deterministic code + RapidFuzz (`backend/app/dedupe.py`).
 
 ---
 
-## 2. In-App LLM Prompts (Phase 4 - Active in `backend/app/tagger.py`)
+## 1. Model & Runtime Configuration (`backend/app/config.py:102-106`, `backend/app/tagger.py:309-336, 472`)
 
-### 2.1 Model & Configuration
-- **Model:** `gemini-2.0-flash-lite-preview-02-05` (fallback `gemini-1.5-flash`)
-- **API:** Google Cloud Vertex AI
-- **Execution:** Batched (10–15 jobs per request)
-- **Temperature:** `0.1` (deterministic classification)
-- **Output Mode:** JSON Schema Structured Output (`response_mime_type="application/json"`)
-- **Thinking:** Disabled / minimal (latency & cost optimization)
-- **Pricing:** \$0.10 / 1M input tokens, \$0.40 / 1M output tokens
+- **Primary Model:** `gemini-3.5-flash-lite` (REST fallback chain: `gemini-3.5-flash-lite` -> `gemini-2.5-flash-lite` -> `gemini-2.5-flash`)
+- **Endpoint (live):** `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` (with Vertex AI REST & SDK fallbacks)
+- **Temperature:** `0.1`
+- **Max Output Tokens:** `4096`
+- **Thinking / Reasoning Config:** Not explicitly set (`thinkingConfig` omitted). Verified live on `gemini-3.5-flash-lite`: `thoughtsTokenCount` = `0` (`promptTokenCount + candidatesTokenCount == totalTokenCount`).
+- **Batch Size:** `8` jobs/call in production pipeline (`tagger.py:472`). *(Note: standalone scripts `run_llm_tagger.py` and `re_evaluate_jobs.py` override to `30` and `15`.)*
+- **Input Truncation:** `max_chars=6000` per job via `extract_relevant_snippet()` (`tagger.py:99-117`), which preserves the first 1,400 chars plus the requirements/qualifications section if found past char 1,400.
+  - **Known Code Bug Found in Audit (`tagger.py:132-133`):** `build_tagging_payload()` currently emits **both** `"description": snippet` and `"description_snippet": snippet`, sending the 6,000-char description twice per job (~43% wasted input tokens).
+- **Output Format:** Structured JSON via `responseMimeType: "application/json"` + `responseSchema: TAGGING_RESPONSE_SCHEMA`.
+- **Retries & Fallback:** Up to 5 attempts per URL with linear backoff `2.5 * (attempt + 1)` seconds on HTTP `429` or `503`. If all models/endpoints fail or return invalid JSON, falls back silently to `heuristic_fallback_tagger()` (word-boundary regex classifier).
 
-### 2.2 System Instruction (`TAGGING_SYSTEM_PROMPT`)
+---
+
+## 2. System Instruction (`TAGGING_SYSTEM_PROMPT` — `backend/app/tagger.py:36-64`)
+
 ```text
 You are an expert technical recruiter analyzing job postings for college students and freshers in India.
-Classify each post according to our strict taxonomy and extract key qualification signals.
+Classify each post according to our strict taxonomy and extract EVERY real qualification signal directly from the job description.
 
 Roles Taxonomy (MUST be one of these exact values):
-- SDE: Software engineering, frontend, backend, fullstack, mobile, DevOps, QA/testing, cloud, cybersecurity.
-- Data/ML: Data science, data analytics, ML/AI engineer, BI analyst, data engineering.
+- SDE: Software engineering, backend, frontend, fullstack, mobile, DevOps, cloud, QA/SDET, application/cloud security.
+- Data/ML: Data science, data analytics, ML/AI engineer, BI analyst, data engineering, quantitative research.
+- Hardware: Hardware engineering, silicon, VLSI, RTL, FPGA, ASIC, PCB, motherboard, embedded electronics, firmware, power electronics, semiconductor, RF/circuit design, board bring-up. NEVER put Hardware/VLSI/Silicon/PCB/Motherboard/Embedded Electronics roles into SDE!
 - Design: UI/UX, product design, graphic design, visual design.
 - Marketing: Growth, digital marketing, SEO, content, social media, performance marketing.
 - Sales: Business development (BDR/SDR), inside sales, account executive.
-- Ops: Business operations, customer support, supply chain, logistics, program management.
+- Ops: Business operations, customer support, supply chain, logistics, program/product management.
 - Finance: Accounting, audit, financial analysis, investment, tax.
 - HR: Recruiting, talent acquisition, human resources, people ops.
 - Other: Any role that does not fit the above categories.
@@ -49,16 +41,32 @@ Roles Taxonomy (MUST be one of these exact values):
 City Canonicalization:
 - Canonical Indian cities: Bangalore, Mumbai, Pune, Hyderabad, Gurugram, Delhi, Noida, Chennai, Kolkata, Ahmedabad, Jaipur, Kochi, Coimbatore.
 - If remote within India or worldwide, return "Remote".
-- If the city cannot be determined with certainty, return "Unknown".
+- If the job is located in India but specific city is not a single metro (e.g. "India, Multiple Locations", "India", or unlisted Indian city), return "India (Multiple/Other)" or "Remote" or the dominant Indian city mentioned.
+- If the role is definitively outside India or foreign-only (e.g., US-only, UK-only), return "Unknown".
 
-Fresher Rules:
-- is_fresher_friendly: true if 0-1 years exp, college student, intern, graduate trainee, or entry-level. false if 2+ years exp required.
-- min_exp and max_exp: Integer years of experience required (default 0 and 1 for fresher roles).
-- skills: Array of up to 6 key technical or role-specific skills (e.g. ["Python", "SQL", "React"]).
+Fresher & Experience Rules (STRICT — ZERO COMPROMISE):
+- is_fresher_friendly: Boolean. Set TRUE ONLY IF the opening genuinely welcomes freshers, interns, apprentices, new college graduates, or candidates with 0-1 years of industry experience.
+- Set is_fresher_friendly: FALSE if the job description requires 2+ years of experience — watch carefully for BOTH digits (2+ years, 2-5 years, 3-6 yrs, 4+ yrs) AND spelled-out words ("two or more years", "at least three years", "five or more years", "minimum of two years").
+- min_exp: Integer minimum years of full-time industry experience required by the JD (e.g. 0 for intern/fresher/new grad, 2 for "2-5 years", 5 for "five or more years").
+- max_exp: Integer maximum years of experience stated (e.g. 1 for fresher/intern, 5 for 2-5 yrs, 8 for 5+ yrs).
+- skills: Array of ALL concrete technical, tool, language, framework, hardware, protocol, and domain skills explicitly mentioned in the job description (extract 8 to 15 distinct skills whenever the JD lists that many; capture specific tools/standards like SAML 2.0, OAuth 2.0, Verilog, SystemVerilog, PCB Design, SPICE, Oscilloscope, PyTorch, FastAPI, Docker, Kubernetes, Active Directory, etc.). Do NOT fabricate generic skills like "Data Structures" or "Python" if they are not actually mentioned or required in the JD.
 - confidence: Float between 0.0 and 1.0 indicating classification confidence.
 ```
 
-### 2.3 JSON Structured Output Schema (`TAGGING_RESPONSE_SCHEMA`)
+---
+
+## 3. User Prompt Template (`backend/app/tagger.py:311, 442`)
+
+```text
+Analyze and classify these fresher job postings:
+
+<JSON array of up to 8 job objects containing: id, title, company, location_raw, city, job_type, description, description_snippet>
+```
+
+---
+
+## 4. Structured Output JSON Schema (`TAGGING_RESPONSE_SCHEMA` — `backend/app/tagger.py:66-88`)
+
 ```json
 {
   "type": "ARRAY",
@@ -68,7 +76,7 @@ Fresher Rules:
       "id": {"type": "INTEGER"},
       "role": {
         "type": "STRING",
-        "enum": ["SDE", "Data/ML", "Design", "Marketing", "Sales", "Ops", "Finance", "HR", "Other"]
+        "enum": ["SDE", "Data/ML", "Hardware", "Design", "Marketing", "Sales", "Ops", "Finance", "HR", "Other"]
       },
       "city": {"type": "STRING"},
       "is_fresher_friendly": {"type": "BOOLEAN"},
@@ -80,59 +88,18 @@ Fresher Rules:
       },
       "confidence": {"type": "NUMBER"}
     },
-    "required": ["id", "role", "city", "is_fresher_friendly", "confidence", "skills"]
+    "required": ["id", "role", "city", "is_fresher_friendly", "min_exp", "max_exp", "confidence", "skills"]
   }
 }
 ```
 
-### 2.4 User Request Payload Example (Sent to Model in Batches)
-```json
-Analyze and classify these fresher job postings:
+---
 
-[
-  {
-    "id": 101,
-    "title": "Software Development Engineer - Intern",
-    "company": "Razorpay",
-    "location_raw": "Bengaluru, Karnataka",
-    "city": "Bangalore",
-    "job_type": "internship",
-    "description_snippet": "Join our payments checkout team. Looking for pre-final/final year students proficient in Python, Go, and relational databases. 6-month full-time internship."
-  },
-  {
-    "id": 102,
-    "title": "Data Analyst Trainee",
-    "company": "Swiggy",
-    "location_raw": "Bangalore, India",
-    "city": "Bangalore",
-    "job_type": "job",
-    "description_snippet": "Fresh college graduates with strong SQL, Excel, and analytical thinking. Will build dashboards and analyze customer delivery metrics."
-  }
-]
-```
+## 5. OpenAI-Compatible Fallback Suffix (`backend/app/tagger.py:252-256`)
 
-### 2.5 Model Response Example (Guaranteed by Schema)
-```json
-[
-  {
-    "id": 101,
-    "role": "SDE",
-    "city": "Bangalore",
-    "is_fresher_friendly": true,
-    "min_exp": 0,
-    "max_exp": 1,
-    "skills": ["Python", "Go", "Relational Databases", "Backend"],
-    "confidence": 0.98
-  },
-  {
-    "id": 102,
-    "role": "Data/ML",
-    "city": "Bangalore",
-    "is_fresher_friendly": true,
-    "min_exp": 0,
-    "max_exp": 1,
-    "skills": ["SQL", "Excel", "Data Analytics", "Dashboards"],
-    "confidence": 0.96
-  }
-]
+Used only if `GEMINI_API_KEY` starts with `gsk_` (Groq `llama-3.3-70b-versatile`) or `sk-` (OpenRouter `google/gemini-2.5-flash-lite`):
+
+```text
+<TAGGING_SYSTEM_PROMPT>
+Return ONLY a JSON object with a single key "items" containing the array of classified job objects: {"items": [{"id": int, "role": str, "city": str, "is_fresher_friendly": bool, "min_exp": int, "max_exp": int, "skills": [str], "confidence": float}]}
 ```

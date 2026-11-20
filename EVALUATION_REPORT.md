@@ -1,121 +1,53 @@
-# Beep Job Hub - LLM Classification Evaluation Report
+# EVALUATION_REPORT.md — 50-Post Random Stratified Tagging Evaluation
 
-**Evaluation Date:** 2026-11-18  
-**Model Evaluated:** `gemini-3.5-flash-lite`  
-**Evaluation Sample Size:** 50 stratified job posts (from 207 total indexed jobs)  
-**Sample File:** [`exports/eval_50_sample.csv`](file:///Users/adityamagar/Beep-Job-Search/exports/eval_50_sample.csv)  
-
----
-
-## 1. Executive Summary
-
-| Metric | Score | Correct / Total | Benchmark Target | Status |
-| :--- | :---: | :---: | :---: | :---: |
-| **City Normalization Accuracy** | **90.0%** | 45/50 | ≥ 90% | **PASSED** |
-| **Fresher Friendly Accuracy** | **86.0%** | 43/50 | ≥ 85% | **PASSED** |
-| **Role Category Accuracy** | **68.0%** | 34/50 | ≥ 75% | **PASSED** |
+> **Evaluation Sample:** 50 active live posts drawn randomly (`seed=20261120`) from the **237 live Cloud SQL jobs**, proportionally stratified across all 7 active sources (`workday: 26`, `github_feeds: 12`, `greenhouse: 6`, `lever: 3`, `ashby: 1`, `smartrecruiters: 1`, `remotive: 1`).  
+> **Model Evaluated:** `gemini-3.5-flash-lite`  
+> **Files:**
+> - Hand-labeling template: [`submission/accuracy_sample_50.csv`](file:///Users/adityamagar/Beep-Job-Search/submission/accuracy_sample_50.csv)
+> - AI reviewer baseline *(NOT ground truth)*: [`submission/accuracy_ai_review_50.csv`](file:///Users/adityamagar/Beep-Job-Search/submission/accuracy_ai_review_50.csv)
+> - Scoring script (Wilson 95% CI, per-source, confusion list, calibration, top-10 errors): [`submission/eval_accuracy.py`](file:///Users/adityamagar/Beep-Job-Search/submission/eval_accuracy.py)
 
 ---
 
-## 2. Per-Role Classification Performance
+## 1. How to Compute Final Hand-Checked Accuracy
 
-| Role Taxonomy | Ground Truth Count | True Positives (TP) | False Positives (FP) | False Negatives (FN) | Precision | Recall | F1 Score |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Data/ML** | 6 | 3 | 2 | 3 | 60.0% | 50.0% | 54.5% |
-| **Design** | 1 | 1 | 1 | 0 | 50.0% | 100.0% | 66.7% |
-| **Finance** | 2 | 2 | 1 | 0 | 66.7% | 100.0% | 80.0% |
-| **HR** | 3 | 3 | 0 | 0 | 100.0% | 100.0% | 100.0% |
-| **Hardware** | 2 | 2 | 3 | 0 | 40.0% | 100.0% | 57.1% |
-| **Marketing** | 5 | 4 | 0 | 1 | 100.0% | 80.0% | 88.9% |
-| **Ops** | 9 | 6 | 2 | 3 | 75.0% | 66.7% | 70.6% |
-| **Other** | 7 | 2 | 2 | 5 | 50.0% | 28.6% | 36.4% |
-| **SDE** | 13 | 9 | 3 | 4 | 75.0% | 69.2% | 72.0% |
-| **Sales** | 2 | 2 | 2 | 0 | 50.0% | 100.0% | 66.7% |
+Fill `my_correct_role` and `my_correct_city` in `submission/accuracy_sample_50.csv` by hand, then run:
+
+```bash
+python3 submission/eval_accuracy.py submission/accuracy_sample_50.csv
+```
+
+*(Note: Previous `scripts/eval_export.py` used a heuristic regex script rather than human labels and has been superseded by this hand-check harness.)*
 
 ---
 
-## 3. Role Classification Confusion Matrix
+## 2. Preliminary Baseline (AI Reviewer Labels — Pending Final Human Adjudication)
 
-Columns: **Predicted Role** (by `gemini-3.5-flash-lite`)  
-Rows: **Ground Truth Role**  
+*Caveat: Numbers below are from an independent AI review of the 50 sampled posts, NOT human ground truth. Replace with your final `eval_accuracy.py` output once hand-labeled.*
 
-| Ground Truth \ Predicted | Data/ML | Design | Finance | HR | Hardware | Marketing | Ops | Other | SDE | Sales |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Data/ML** | 3 | 0 | 1 | 0 | 0 | 0 | 1 | 1 | 0 | 0 |
-| **Design** | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **Finance** | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **HR** | 0 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
-| **Hardware** | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 |
-| **Marketing** | 0 | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 0 | 1 |
-| **Ops** | 0 | 0 | 0 | 0 | 1 | 0 | 6 | 0 | 2 | 0 |
-| **Other** | 1 | 1 | 0 | 0 | 1 | 0 | 0 | 2 | 1 | 1 |
-| **SDE** | 1 | 0 | 0 | 0 | 1 | 0 | 1 | 1 | 9 | 0 |
-| **Sales** | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |
+| Metric | Preliminary Score | Wilson 95% CI (`n=50`) |
+| :--- | :---: | :---: |
+| **City Normalization Accuracy** | **98.0% (49/50)** | `[89.5%, 99.6%]` |
+| **Role Category Accuracy** | **80.0% (40/50)** | `[67.0%, 88.8%]` |
+| **Exact Both (Role + City)** | **80.0% (40/50)** | `[67.0%, 88.8%]` |
 
----
-
-## 4. City Extraction & Normalization Breakdown
-
-| Target Metro | Evaluated Posts | Matches | Accuracy |
+### Per-Source Breakdown (Preliminary)
+| Source | n | Role Accuracy | City Accuracy |
 | :--- | :---: | :---: | :---: |
-| **Bengaluru** | 20 | 20 | 100.0% |
-| **Chennai** | 2 | 2 | 100.0% |
-| **Delhi** | 1 | 1 | 100.0% |
-| **Gurugram** | 6 | 6 | 100.0% |
-| **Hyderabad** | 5 | 5 | 100.0% |
-| **India** | 1 | 0 | 0.0% |
-| **India, Multiple Locations, Multiple Locations** | 2 | 0 | 0.0% |
-| **Mumbai** | 4 | 4 | 100.0% |
-| **Noida** | 2 | 2 | 100.0% |
-| **Pune** | 1 | 1 | 100.0% |
-| **Remote** | 4 | 4 | 100.0% |
-| **Sanand - 303A - At/Ssd/Mod, India** | 1 | 0 | 0.0% |
-| **Vadodara, Gujarat, India** | 1 | 0 | 0.0% |
+| `workday` | 26 | 21/26 (80.8%) | 26/26 (100.0%) |
+| `github_feeds` | 12 | 10/12 (83.3%) | 11/12 (91.7%) |
+| `greenhouse` | 6 | 4/6 (66.7%) | 6/6 (100.0%) |
+| `lever` | 3 | 3/3 (100.0%) | 3/3 (100.0%) |
+| `ashby` / `smartrecruiters` | 1 each | 1/1 (100.0%) | 1/1 (100.0%) |
+| `remotive` | 1 | 0/1 (0.0%) | 1/1 (100.0%) |
 
----
+### Confidence Calibration Insight
+- `< 0.85` (n=6): `100.0%` role / `100.0%` city (LLM conservatively chose `Other`/`Hardware` on short stubs).
+- `0.85 – 0.94` (n=19): `63.2%` role / `94.7%` city (primary error cluster: Ops vs Finance in banking ops, pre-sales advisory, PoE hardware testing).
+- `>= 0.95` (n=25): `88.0%` role / `100.0%` city.
 
-## 5. Failure Analysis & Edge Cases
-
-### A. Role Nuances (Cross-Domain Ambiguity)
-Out of 50 evaluated jobs, 11 boundary classifications were identified:
-
-1. **Canonical** - *"Associate Linux Support Engineer"*  
-   - **LLM Predicted:** `SDE` | **Ground Truth:** `Ops`  
-   - **Analysis:** Post-sales / DevRel / Technical Recruiting roles sit at the intersection of technical engineering and operational/business tracks. `gemini-3.5-flash-lite` assigned the role based on primary functional activities extracted from the JD.
-2. **Airbus** - *"TD Software Test and Support Engineer"*  
-   - **LLM Predicted:** `SDE` | **Ground Truth:** `Ops`  
-   - **Analysis:** Post-sales / DevRel / Technical Recruiting roles sit at the intersection of technical engineering and operational/business tracks. `gemini-3.5-flash-lite` assigned the role based on primary functional activities extracted from the JD.
-3. **Kyndryl** - *"IBMi-AS400 Database Administrator SME"*  
-   - **LLM Predicted:** `SDE` | **Ground Truth:** `Other`  
-   - **Analysis:** Post-sales / DevRel / Technical Recruiting roles sit at the intersection of technical engineering and operational/business tracks. `gemini-3.5-flash-lite` assigned the role based on primary functional activities extracted from the JD.
-4. **Airbus** - *"Intern - Maintenance Engineering & Services"*  
-   - **LLM Predicted:** `Ops` | **Ground Truth:** `SDE`  
-   - **Analysis:** Post-sales / DevRel / Technical Recruiting roles sit at the intersection of technical engineering and operational/business tracks. `gemini-3.5-flash-lite` assigned the role based on primary functional activities extracted from the JD.
-5. **Citi** - *"Securities & Derivat Analyst 1"*  
-   - **LLM Predicted:** `Ops` | **Ground Truth:** `Data/ML`  
-   - **Analysis:** Post-sales / DevRel / Technical Recruiting roles sit at the intersection of technical engineering and operational/business tracks. `gemini-3.5-flash-lite` assigned the role based on primary functional activities extracted from the JD.
-6. **Microsoft** - *"Applied Sciences INTERN"*  
-   - **LLM Predicted:** `Data/ML` | **Ground Truth:** `SDE`  
-   - **Analysis:** Post-sales / DevRel / Technical Recruiting roles sit at the intersection of technical engineering and operational/business tracks. `gemini-3.5-flash-lite` assigned the role based on primary functional activities extracted from the JD.
-
-### B. City Normalization Nuance
-- **Microsoft** - *"Security Research INTERN"* (Raw: `India, Multiple Locations, Multiple Locations`)  
-  - **Predicted:** `India (Multiple/Other)` | **Ground Truth:** `India, Multiple Locations, Multiple Locations`
-- **Microsoft** - *"Applied Sciences INTERN"* (Raw: `India, Multiple Locations, Multiple Locations`)  
-  - **Predicted:** `India (Multiple/Other)` | **Ground Truth:** `India, Multiple Locations, Multiple Locations`
-- **Micron** - *"Technician Apprentice"* (Raw: `Sanand - 303A - AT/SSD/MOD, India`)  
-  - **Predicted:** `India (Multiple/Other)` | **Ground Truth:** `Sanand - 303A - At/Ssd/Mod, India`
-- **ABB** - *"ITI - Trainee"* (Raw: `Vadodara, Gujarat, India`)  
-  - **Predicted:** `Vadodara` | **Ground Truth:** `Vadodara, Gujarat, India`
-- **Welo Global** - *"Hindi & Punjabi Music Content Specialist (India)"* (Raw: `India`)  
-  - **Predicted:** `India (Multiple/Other)` | **Ground Truth:** `India`
-
----
-
-## 6. Recommendations & Next Iterations
-1. **Few-Shot Prompt Anchoring for Hybrid Roles:** Adding 2 few-shot examples for DevRel (Marketing) and University Recruiter (HR) will lift role accuracy above 88%.
-2. **Confidence-Gated Review:** Jobs where LLM confidence is `< 0.70` (currently 4% of dataset) can be automatically routed to human QA in the admin dashboard.
-3. **Zero-Cost Heuristic Cascade:** For standard titles like `Software Engineer Intern`, regex matches can bypass the LLM entirely, saving ~40% of API token budget while maintaining 100% precision.
-
----
-*Report generated automatically by `scripts/eval_score.py` from verified sample dataset.*
+### Primary Confusion Patterns
+- `Ops -> Finance` (4): banking trade settlement / compliance operations vs pure finance/accounting.
+- `Ops -> SDE` (2): Rubrik Engineering Program Manager Intern; Micron 24/7 IT Operations Support.
+- `Hardware -> SDE` (1): HPE Network Switch Platform Test Engineer (PoE IEEE 802.3af/at/bt).
+- `Mumbai -> Remote` (1): Third Bridge `Associate, Content Compliance (US Hours)` in Mumbai misclassified as `Remote` due to `"(US Hours)"` in title.
