@@ -22,13 +22,17 @@ from app.db import Database
 class TestLLMTagger(unittest.TestCase):
 
     def test_cost_calculation(self):
-        # 1M input ($0.10) + 1M output ($0.40) = $0.50
+        # Default model is gemini-3.5-flash-lite ($0.30/1M in, $2.50/1M out) -> $2.80 for 1M+1M
         cost_1m = calculate_llm_cost(1_000_000, 1_000_000)
-        self.assertAlmostEqual(cost_1m, 0.50, places=4)
+        self.assertAlmostEqual(cost_1m, 2.80, places=4)
 
-        # Batch of 10 posts: ~2,000 input tokens, ~400 output tokens
-        batch_cost = calculate_llm_cost(2_000, 400)
-        expected = (2000 * 0.10 + 400 * 0.40) / 1_000_000
+        # gemini-2.5-flash-lite ($0.10/1M in, $0.40/1M out) -> $0.50 for 1M+1M
+        cost_25 = calculate_llm_cost(1_000_000, 1_000_000, model_name="gemini-2.5-flash-lite")
+        self.assertAlmostEqual(cost_25, 0.50, places=4)
+
+        # Batch of 8 posts on default model
+        batch_cost = calculate_llm_cost(8_000, 960)
+        expected = (8000 * 0.30 + 960 * 2.50) / 1_000_000
         self.assertAlmostEqual(batch_cost, round(expected, 6), places=6)
 
     def test_build_payload(self):
@@ -48,7 +52,9 @@ class TestLLMTagger(unittest.TestCase):
         self.assertEqual(len(payload), 1)
         self.assertEqual(payload[0]["id"], 1)
         self.assertEqual(payload[0]["title"], "Backend Intern")
-        self.assertIn("Go/Python", payload[0]["description_snippet"])
+        self.assertIn("Go/Python", payload[0]["description"])
+        # Ensure description is NOT duplicated under description_snippet
+        self.assertNotIn("description_snippet", payload[0])
 
     def test_heuristic_taxonomy_classification(self):
         test_posts = [
@@ -125,14 +131,13 @@ class TestDatabaseEnrichmentAndCostLogging(unittest.TestCase):
         skills_2 = json.loads(rows[1]["skills"])
         self.assertIn("SQL", skills_2)
 
-        # 4. Verify cost was logged in llm_cost_logs
+        # 4. Verify heuristic fallback logs cleanly with $0.00 cost & heuristic_fallback model_name
         cur.execute("SELECT model_name, posts_count, input_tokens, output_tokens, cost_usd FROM llm_cost_logs WHERE run_id = ?", (run_id,))
         cost_row = cur.fetchone()
         self.assertIsNotNone(cost_row)
         self.assertEqual(cost_row["posts_count"], 2)
-        self.assertGreater(cost_row["input_tokens"], 0)
-        self.assertGreater(cost_row["output_tokens"], 0)
-        self.assertGreater(cost_row["cost_usd"], 0.0)
+        self.assertEqual(cost_row["model_name"], "heuristic_fallback")
+        self.assertEqual(cost_row["cost_usd"], 0.0)
         conn.close()
 
     def test_deactivates_unknown_city_jobs(self):

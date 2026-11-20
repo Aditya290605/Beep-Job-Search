@@ -66,7 +66,8 @@ SENIOR_TITLE_KEYWORDS = [
     r"\bsenior\b", r"\bsr\.?\b", r"\bdirector\b", r"\blead\b", r"\bleader\b", r"\bteam lead(?:er)?\b", r"\bstaff\b",
     r"\bprincipal\b", r"\bhead of\b", r"\bvp\b", r"\bvice president\b", r"\bmanager\b",
     r"\barchitect\b",
-    r"\b(?:sde|swe|engineer|developer|analyst|consultant|specialist)\s*[- ]?(?:ii|iii|iv|v|2|3|4|5)\b"
+    r"\b(?:sde|swe|engineer|developer|analyst|consultant|specialist|associate)\s*[- ]?(?:ii|iii|iv|v|2|3|4|5)\b",
+    r"\(consultant\)\s*[- ]?(?:ii|iii|iv|v|2|3|4|5)\b"
 ]
 SENIOR_EXP_KEYWORDS = [
     r"\b(?:2|3|4|5|6|7|8|9|10|11|12)\s*[-–to]+\s*\d+\+?\s*(?:yr|year|years|yrs)\b",
@@ -189,8 +190,8 @@ def is_fresher_job(title: str, description: str = "") -> bool:
 
 
 def extract_job_type(title: str, description: str = "") -> str:
-    """Returns 'internship' if title or description mentions intern, else 'job'."""
+    """Returns 'internship' if title or description mentions intern/internship (word-boundary safe), else 'job'."""
     text = f"{title} {description[:300]}".lower()
-    if "intern" in text:
+    if re.search(r"\bintern(?:ship|s)?\b", text):
         return "internship"
     return "job"
