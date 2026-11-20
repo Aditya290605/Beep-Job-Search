@@ -37,8 +37,22 @@ ABBREVIATIONS = {
     r"\bml\b": "machine learning",
     r"\bai\b": "artificial intelligence",
     r"\bfe\b": "frontend",
-    r"\bbe\b": "backend"
+    r"\bbe\b": "backend",
+    r"\binternships?\b": "intern",
 }
+
+# Known company brand aliases
+COMPANY_ALIASES = {
+    "hewlett packard enterprise": "hpe",
+    "general electric healthcare": "ge healthcare",
+}
+
+# Mutually exclusive discipline groups that must never be fuzzy-merged
+CONFLICTING_TRACK_GROUPS = [
+    (r"\b(?:software|frontend|backend|fullstack|web|mobile)\b", r"\b(?:silicon|hardware|vlsi|fpga|asic|pcb|mechanical|electrical)\b"),
+    (r"\bfrontend\b", r"\bbackend\b"),
+    (r"\b(?:sales|marketing|hr|finance|accounting)\b", r"\b(?:software|hardware|silicon|engineer|developer)\b"),
+]
 
 
 def normalize_company(name: str) -> str:
@@ -60,7 +74,8 @@ def normalize_company(name: str) -> str:
     # Strip corporate noise
     clean = CORP_REGEX.sub(" ", clean)
     clean = re.sub(r'[^a-z0-9\s]', ' ', clean)
-    return " ".join(clean.split())
+    normalized = " ".join(clean.split())
+    return COMPANY_ALIASES.get(normalized, normalized)
 
 
 def normalize_title(title: str) -> str:
@@ -126,6 +141,19 @@ def is_duplicate_pair(job1_company: str, job1_title: str, job1_city: str, job1_t
         has2 = bool(re.search(p, t2_lower))
         if has1 != has2:
             return False, "Different seniority numerals"
+
+    # Guard 4: Mutually exclusive discipline mismatch (e.g. Software PhD Intern vs Silicon PhD Intern)
+    for pat_a, pat_b in CONFLICTING_TRACK_GROUPS:
+        a1, b1 = bool(re.search(pat_a, t1_lower)), bool(re.search(pat_b, t1_lower))
+        a2, b2 = bool(re.search(pat_a, t2_lower)), bool(re.search(pat_b, t2_lower))
+        if (a1 and b2 and not b1 and not a2) or (b1 and a2 and not a1 and not b2):
+            return False, "Different discipline tracks"
+
+    # Guard 5: Different recruitment cohort years (e.g. 2024 vs 2027)
+    y1 = set(re.findall(r"\b202\d\b", t1_lower))
+    y2 = set(re.findall(r"\b202\d\b", t2_lower))
+    if y1 and y2 and y1.isdisjoint(y2):
+        return False, "Different cohort years"
 
     # Normalize company and titles
     c1 = normalize_company(job1_company)

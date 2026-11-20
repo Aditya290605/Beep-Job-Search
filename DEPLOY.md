@@ -80,9 +80,9 @@ Once deployed, Cloud Run prints your live URL:
 `https://fresher-jobs-hub-<hash>-el.a.run.app`
 
 Verify health & live endpoints:
-- `https://<your-cloud-run-url>/` (Beep Job Hub UI with 200+ roles)
-- `https://<your-cloud-run-url>/healthz` (Liveness & database check)
-- `https://<your-cloud-run-url>/api/status` (Pipeline telemetry)
+- `https://<your-cloud-run-url>/` (Beep Job Hub UI with 230+ roles)
+- `https://<your-cloud-run-url>/api/health` (Liveness & database check — use `/api/health` externally because Cloud Run's Google Frontend intercepts `/healthz`)
+- `https://<your-cloud-run-url>/api/status` (Pipeline telemetry & unattended run history)
 - `https://<your-cloud-run-url>/api/metrics/cost` (LLM token & cost per 1,000 posts)
 
 ---
@@ -101,7 +101,7 @@ gcloud run jobs create $JOB_NAME \
   --command "python" \
   --args "-m,app.pipeline" \
   --memory 512Mi \
-  --task-timeout 300s
+  --task-timeout 900s
 
 # 2. Execute the job immediately once to verify initial seed & Gemini tagging
 gcloud run jobs execute $JOB_NAME --region $REGION --wait

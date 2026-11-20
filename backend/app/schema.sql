@@ -37,6 +37,9 @@ CREATE INDEX IF NOT EXISTS idx_jobs_job_type ON jobs(job_type);
 CREATE INDEX IF NOT EXISTS idx_jobs_posted_date ON jobs(posted_date DESC);
 CREATE INDEX IF NOT EXISTS idx_jobs_first_seen_at ON jobs(first_seen_at DESC);
 CREATE INDEX IF NOT EXISTS idx_jobs_is_active ON jobs(is_active);
+CREATE INDEX IF NOT EXISTS idx_jobs_expires_at ON jobs(expires_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_last_seen_at ON jobs(last_seen_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_apply_url ON jobs(apply_url);
 
 -- Full-text search index across title, company, and description
 CREATE INDEX IF NOT EXISTS idx_jobs_fts ON jobs USING gin(

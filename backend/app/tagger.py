@@ -118,7 +118,7 @@ def extract_relevant_snippet(desc: str, max_chars: int = 6000) -> str:
 
 
 def build_tagging_payload(jobs: List[Dict[str, Any]]) -> str:
-    """Formats a batch of untagged jobs into a rich JSON payload for the LLM."""
+    """Formats a batch of untagged jobs into a compact JSON payload for the LLM."""
     payload = []
     for j in jobs:
         snippet = extract_relevant_snippet(j.get("description") or "", max_chars=6000)
@@ -130,7 +130,6 @@ def build_tagging_payload(jobs: List[Dict[str, Any]]) -> str:
             "city": j.get("city", ""),
             "job_type": j.get("job_type", "job"),
             "description": snippet,
-            "description_snippet": snippet
         })
     return json.dumps(payload, indent=2)
 
@@ -359,8 +358,12 @@ def _call_gemini_rest_api(
 
     resp_data = None
     last_err = None
+    used_model = clean_model
     payload_bytes = json.dumps(body).encode("utf-8")
     for url in urls:
+        safe_url = re.sub(r"([?&]key=)[^&\s]+", r"\1REDACTED", url)
+        m_match = re.search(r"/models/([^:/?]+)", safe_url)
+        candidate_m = m_match.group(1) if m_match else clean_model
         for attempt in range(5):
             try:
                 req = urllib.request.Request(
@@ -371,20 +374,19 @@ def _call_gemini_rest_api(
                 )
                 with urllib.request.urlopen(req, timeout=60) as resp:
                     resp_data = json.loads(resp.read().decode("utf-8"))
+                    used_model = resp_data.get("modelVersion") or candidate_m
                     break
             except urllib.error.HTTPError as he:
                 err_body = he.read().decode("utf-8", errors="ignore")[:1200]
-                last_err = RuntimeError(f"HTTP {he.code} on {url}: {err_body}")
+                last_err = RuntimeError(f"HTTP {he.code} on {safe_url}: {err_body}")
                 if he.code in (503, 429) and attempt < 4:
                     import time
                     time.sleep(2.5 * (attempt + 1))
                     continue
                 break
             except Exception as ex:
-                last_err = ex
+                last_err = RuntimeError(f"{type(ex).__name__} on {safe_url}: {ex}")
                 break
-        if resp_data:
-            break
         if resp_data is not None:
             break
 
@@ -401,8 +403,10 @@ def _call_gemini_rest_api(
 
     usage = resp_data.get("usageMetadata") or {}
     in_tokens = int(usage.get("promptTokenCount") or (len(prompt) // 4))
-    out_tokens = int(usage.get("candidatesTokenCount") or (len(response_text) // 4))
-    cost_usd = calculate_llm_cost(in_tokens, out_tokens, model_name)
+    cand_tokens = int(usage.get("candidatesTokenCount") or (len(response_text) // 4))
+    think_tokens = int(usage.get("thoughtsTokenCount") or 0)
+    out_tokens = cand_tokens + think_tokens
+    cost_usd = calculate_llm_cost(in_tokens, out_tokens, used_model)
 
     return parsed_results, in_tokens, out_tokens, cost_usd
 
@@ -427,10 +431,7 @@ def tag_job_batch_vertex(jobs_batch: List[Dict[str, Any]], model_name: str = con
     if not HAS_VERTEX:
         logger.info("Vertex AI SDK / API key not configured; using heuristic tagger fallback.")
         results = heuristic_fallback_tagger(jobs_batch)
-        in_tok = len(json.dumps(jobs_batch)) // 4
-        out_tok = len(json.dumps(results)) // 4
-        cost = calculate_llm_cost(in_tok, out_tok, model_name)
-        return results, in_tok, out_tok, cost
+        return results, 0, 0, 0.0
 
     try:
         vertex_region = getattr(config, "VERTEX_REGION", "us-central1")
@@ -455,7 +456,9 @@ def tag_job_batch_vertex(jobs_batch: List[Dict[str, Any]], model_name: str = con
         # Extract actual token counts from response metadata
         usage = getattr(response, "usage_metadata", None)
         in_tokens = getattr(usage, "prompt_token_count", len(prompt) // 4)
-        out_tokens = getattr(usage, "candidates_token_count", len(response_text) // 4)
+        cand_tokens = getattr(usage, "candidates_token_count", len(response_text) // 4)
+        think_tokens = getattr(usage, "thoughts_token_count", 0) or 0
+        out_tokens = cand_tokens + think_tokens
         cost_usd = calculate_llm_cost(in_tokens, out_tokens, model_name)
 
         return parsed_results, in_tokens, out_tokens, cost_usd
@@ -463,10 +466,7 @@ def tag_job_batch_vertex(jobs_batch: List[Dict[str, Any]], model_name: str = con
     except Exception as e:
         logger.warning(f"Vertex AI API call failed ({e}); falling back to heuristic tagger.")
         results = heuristic_fallback_tagger(jobs_batch)
-        in_tok = len(json.dumps(jobs_batch)) // 4
-        out_tok = len(json.dumps(results)) // 4
-        cost = calculate_llm_cost(in_tok, out_tok, model_name)
-        return results, in_tok, out_tok, cost
+        return results, 0, 0, 0.0
 
 
 def enrich_untagged_jobs(db: Database, run_id: Optional[int] = None, batch_size: int = 8, tagger_fn = None) -> int:
@@ -520,10 +520,11 @@ def enrich_untagged_jobs(db: Database, run_id: Optional[int] = None, batch_size:
         batch = untagged_jobs[i:i + batch_size]
         tagged_results, in_tok, out_tok, cost_usd = tagger_fn(batch)
 
-        # Log LLM cost
+        # Log LLM cost (distinguish zero-cost heuristic fallback from real LLM calls)
+        logged_model = "heuristic_fallback" if (in_tok == 0 and out_tok == 0 and cost_usd == 0.0) else config.VERTEX_AI_MODEL
         db.log_llm_cost(
             run_id=run_id,
-            model_name=config.VERTEX_AI_MODEL,
+            model_name=logged_model,
             posts_count=len(batch),
             in_tokens=in_tok,
             out_tokens=out_tok,
@@ -539,7 +540,9 @@ def enrich_untagged_jobs(db: Database, run_id: Optional[int] = None, batch_size:
             for item in tagged_results:
                 job_id = item["id"]
                 role = item.get("role", "Other")
-                city = item.get("city", "Remote")
+                if role not in config.CANONICAL_ROLES:
+                    role = "Other"
+                city = (item.get("city") or "Remote").strip()
                 orig_city = batch_city_map.get(job_id)
                 # Keep valid India location if LLM tentatively returned Unknown, unless original was generic Remote
                 if city == "Unknown" and orig_city and orig_city not in ("Unknown", "Remote"):

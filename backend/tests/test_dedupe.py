@@ -25,6 +25,34 @@ class TestDedupeEngine(unittest.TestCase):
         self.assertEqual(normalize_company("Dreamplug Technologies (CRED)"), "cred")
         self.assertEqual(normalize_company("Atlan India Pvt Ltd"), "atlan")
         self.assertEqual(normalize_company("Swiggy Technologies"), "swiggy")
+        self.assertEqual(normalize_company("Hewlett Packard Enterprise"), "hpe")
+
+    def test_discipline_and_cohort_guardrails(self):
+        # Google Software Engineering PhD Intern vs Silicon Engineering Intern, PhD must NEVER merge
+        is_dupe, reason = is_duplicate_pair(
+            job1_company="Google",
+            job1_title="Software Engineering PhD Intern, Summer 2027",
+            job1_city="Bangalore",
+            job1_type="internship",
+            job2_company="Google",
+            job2_title="Silicon Engineering Intern, PhD, Summer 2027",
+            job2_city="Bangalore",
+            job2_type="internship"
+        )
+        self.assertFalse(is_dupe, f"Must not merge Software and Silicon PhD interns: {reason}")
+
+        # Different cohort years (2024 vs 2027) must NOT merge
+        is_dupe2, _ = is_duplicate_pair(
+            job1_company="NXP",
+            job1_title="Technical Internship 2027",
+            job1_city="Bangalore",
+            job1_type="internship",
+            job2_company="NXP",
+            job2_title="Technical Internship 2024",
+            job2_city="Bangalore",
+            job2_type="internship"
+        )
+        self.assertFalse(is_dupe2)
 
     def test_title_normalization(self):
         norm1 = normalize_title("SDE Intern - 2026")
