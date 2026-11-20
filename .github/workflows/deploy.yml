@@ -37,7 +37,6 @@ jobs:
     name: Build & Deploy Cloud Run Service + Job
     needs: test
     runs-on: ubuntu-latest
-    if: ${{ secrets.GCP_SA_KEY != '' }}
     permissions:
       contents: read
       id-token: write
