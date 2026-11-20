@@ -81,10 +81,10 @@ cp .env.example .env
 # Optional: set GEMINI_API_KEY in .env if re-running live LLM tagging
 
 # 3. Launch full-stack local server (auto-seeds local SQLite from backend/app/seed_jobs.json)
-AUTO_SEED_ON_BOOT=true python3 scripts/run_local_server.py
+AUTO_SEED_ON_BOOT=true PYTHONPATH=backend python3 -m uvicorn app.api.main:app --host 0.0.0.0 --port 8080 --reload
 ```
 
-Open **`http://localhost:5173`** in your browser.
+Open **`http://localhost:8080`** in your browser.
 
 ### Run Unit Tests
 ```bash

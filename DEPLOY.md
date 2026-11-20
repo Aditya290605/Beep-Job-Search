@@ -162,4 +162,4 @@ Cloud SQL (`db-f1-micro`) is the primary ongoing cost (~$9–$12/month after fre
    gcloud sql instances delete $SQL_INSTANCE
    ```
 3. **Full Project Teardown:**
-   Export the final dataset via `python3 scripts/export_csv.py` and delete the GCP project or disable billing.
+   The active dataset is archived in `submission/dataset_active_jobs.csv`. Then delete the GCP project or disable billing when the evaluation is complete.
